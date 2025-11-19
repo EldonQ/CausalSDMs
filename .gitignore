@@ -62,6 +62,8 @@ figures/
 # 数据目录（保留 README 和元数据，忽略大型数据文件）
 # 注意：大型数据文件（*.tif, *.nc, *.shp, *.zip 等）已被上述全局规则覆盖
 # 如需追踪特定数据文件，请使用 git add -f 强制添加
+data-gdw/
+data-main/
 
 # 物种出现数据（如果是大文件）
 Carassius_auratusOCC/**/*.csv
