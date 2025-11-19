@@ -64,6 +64,12 @@ figures/
 # 如需追踪特定数据文件，请使用 git add -f 强制添加
 data-gdw/
 data-main/
+hydrobasins_asia/
+references/
+zhujiang/
+Drawing/
+earthenvstreams/
+earthenvstreams_china/
 
 # 物种出现数据（如果是大文件）
 Carassius_auratusOCC/**/*.csv
