@@ -1,0 +1,13 @@
+id,title,authors,journal,year,doi,url
+1,Near-global freshwater-specific environmental variables for biodiversity analyses at 1 km resolution,"Domisch S; Amatulli G; Jetz W",Scientific Data,2015,10.1038/sdata.2015.73,https://doi.org/10.1038/sdata.2015.73
+2,WorldClim 2: new 1-km spatial resolution climate surfaces for global land areas,"Fick SE; Hijmans RJ",International Journal of Climatology,2017,10.1002/joc.5086,https://doi.org/10.1002/joc.5086
+3,SoilGrids250m: Global gridded soil information based on machine learning,"Hengl T; et al.",PLOS ONE,2017,10.1371/journal.pone.0169748,https://doi.org/10.1371/journal.pone.0169748
+4,Random Forests,"Breiman L",Machine Learning,2001,10.1023/A:1010933404324,https://doi.org/10.1023/A:1010933404324
+5,Maximum entropy modeling of species geographic distributions,"Phillips SJ; Anderson RP; Schapire RE",Ecological Modelling,2006,10.1016/j.ecolmodel.2005.03.026,https://doi.org/10.1016/j.ecolmodel.2005.03.026
+6,Fast stable direct fitting and smoothness selection for generalized additive models,"Wood SN",Journal of the Royal Statistical Society: Series B,2011,10.1111/j.1467-9868.2010.00749.x,https://doi.org/10.1111/j.1467-9868.2010.00749.x
+7,Learning Bayesian Networks with the bnlearn R Package,"Scutari M",Journal of Statistical Software,2010,10.18637/jss.v035.i03,https://doi.org/10.18637/jss.v035.i03
+8,Causal Inference Using Graphical Models with the R Package pcalg,"Kalisch M; Mächler M; Colombo D; Maathuis MH; Bühlmann P",Journal of Statistical Software,2012,10.18637/jss.v047.i11,https://doi.org/10.18637/jss.v047.i11
+9,Visualizing the effects of predictor variables in black box supervised learning models,"Apley DW; Zhu J",The Annals of Applied Statistics,2020,10.1214/19-AOAS1380,https://doi.org/10.1214/19-AOAS1380
+10,Inferring causation from time series in Earth system sciences,"Runge J; et al.",Nature Communications,2019,10.1038/s41467-019-10105-3,https://doi.org/10.1038/s41467-019-10105-3
+11,HydroSHEDS – A global, high‑resolution hydrographic dataset derived from SRTM,"Lehner B; Verdin K; Jarvis A",Hydrology and Earth System Sciences,2008,10.5194/hess-12-823-2008,https://doi.org/10.5194/hess-12-823-2008
+

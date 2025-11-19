@@ -1,0 +1,95 @@
+# Git追踪忽略清单：临时文件与环境文件
+
+# Python虚拟环境与缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# R语言产生的临时文件
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+*.Rproj
+*.rds
+*.RDS
+
+# 操作系统临时文件
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# 计算结果与中间文件目录
+results/
+outputs/
+output/
+figures/
+
+# IDE与编辑器配置
+.vscode/
+.idea/
+.cursor/
+
+# 压缩包与临时打包文件
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+# 备份文件
+*.bak
+*.old
+*.tmp
+
+# 大型数据文件（根据需要调整）
+*.tif
+*.tiff
+*.nc
+*.shp
+*.dbf
+*.shx
+*.prj
+
+# 数据目录（保留 README 和元数据，忽略大型数据文件）
+# 注意：大型数据文件（*.tif, *.nc, *.shp, *.zip 等）已被上述全局规则覆盖
+# 如需追踪特定数据文件，请使用 git add -f 强制添加
+
+# 物种出现数据（如果是大文件）
+Carassius_auratusOCC/**/*.csv
+TriplophysaOCC/**/*.csv
+
+# Python 相关
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ipynb_checkpoints/
+*.pkl
+*.pickle
+
+# 模型文件（较大的机器学习模型）
+*.pt
+*.pth
+*.ckpt
+*.pb
+*.h5
+*.hdf5
+*.keras
+
+# 日志文件
+*.log
+logs/
+
+# 临时计算文件
+*.aux
+*.out
+*.synctex.gz
