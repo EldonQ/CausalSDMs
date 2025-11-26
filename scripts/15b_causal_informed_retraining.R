@@ -30,7 +30,7 @@ for(pkg in packages) {
   }
 }
 
-# 字体设置（Nature标准：Arial，1200dpi）
+# 字体设置（Nature标准：Arial，2400dpi）
 try({
   sysfonts::font_add(
     family = "Arial",
@@ -39,7 +39,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -426,9 +426,9 @@ combined_plot <- (p_auc | p_tss) / p_retention +
   plot_layout(heights = c(1, 1.2))
 
 ggsave("figures/15b_causal_retraining/performance_comparison.png", 
-       plot = combined_plot, width = 8, height = 6, dpi = 1200, bg = "white")
+       plot = combined_plot, width = 8, height = 6, dpi = 2400, bg = "transparent")
 ggsave("figures/15b_causal_retraining/performance_comparison.svg", 
-       plot = combined_plot, width = 8, height = 6, bg = "white")
+       plot = combined_plot, width = 8, height = 6, bg = "transparent")
 
 cat("  ✓ 对比图表已保存\n")
 

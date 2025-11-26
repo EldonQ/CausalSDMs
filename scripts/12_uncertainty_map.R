@@ -34,7 +34,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 

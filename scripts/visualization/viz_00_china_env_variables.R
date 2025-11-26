@@ -35,7 +35,7 @@ log_message <- function(msg) {
 log_message("设置Nature期刊绘图标准...")
 
 # Nature期刊要求
-DPI <- 1200  # 分辨率
+DPI <- 2400  # 分辨率（统一提高到 2400 dpi）
 FONT_FAMILY <- "Arial"  # 无衬线字体
 BASE_SIZE <- 12  # 基础字体大小
 
@@ -50,10 +50,11 @@ theme_nature <- function() {
       legend.title = element_text(size = 11, face = "bold"),
       legend.text = element_text(size = 10),
       legend.position = "right",
+      # 无网格线 + 透明背景，便于在期刊版面叠加
       panel.grid.minor = element_blank(),
-      panel.grid.major = element_line(size = 0.3, color = "gray90"),
-      plot.background = element_rect(fill = "white", color = NA),
-      panel.background = element_rect(fill = "white", color = NA)
+      panel.grid.major = element_blank(),
+      plot.background = element_rect(fill = "transparent", color = NA),
+      panel.background = element_rect(fill = "transparent", color = NA)
     )
 }
 
@@ -434,7 +435,7 @@ plot_raster_layer <- function(raster_layer, layer_name, color_scheme, china_sf,
         legend.key.height = unit(1.5, "cm")
       )
     
-    # 保存PNG（1200 dpi）
+    # 保存PNG（2400 dpi，透明背景）
     ggsave(
       filename = paste0(output_file, ".png"),
       plot = p,
@@ -442,16 +443,16 @@ plot_raster_layer <- function(raster_layer, layer_name, color_scheme, china_sf,
       height = height,
       dpi = DPI,
       units = "in",
-      bg = "white"
+      bg = "transparent"
     )
-    # 保存SVG（矢量图）
+    # 保存SVG（矢量图，透明背景）
     ggsave(
       filename = paste0(output_file, ".svg"),
       plot = p,
       width = width,
       height = height,
       units = "in",
-      bg = "white",
+      bg = "transparent",
       device = "svg"
     )
 
@@ -597,7 +598,7 @@ log_message(paste0("- 总图数：", nrow(plot_log)))
 log_message(paste0("- 成功：", sum(plot_log$status == "Success")))
 log_message(paste0("- 失败：", sum(plot_log$status != "Success")))
 log_message(paste0("- 输出文件夹：", output_dir))
-log_message(paste0("- 图片格式：PNG (1200 dpi)"))
+log_message(paste0("- 图片格式：PNG (2400 dpi)"))
 log_message(paste0("- 字体：Arial"))
 log_message("========================================")
 

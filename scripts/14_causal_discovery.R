@@ -54,7 +54,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -219,9 +219,9 @@ p_avg_full <- ggraph::ggraph(tg_full, layout = "kk") +
   theme_void(base_family = "Arial")
 
 ggsave("figures/14_causal/dag_hc_avg_network_full.png", plot = p_avg_full,
-       width = 14, height = 10, units = "in", dpi = 1200, bg = "white")
+       width = 14, height = 10, units = "in", dpi = 2400, bg = "transparent")
 ggsave("figures/14_causal/dag_hc_avg_network_full.svg", plot = p_avg_full,
-       width = 14, height = 10, units = "in", bg = "white")
+       width = 14, height = 10, units = "in", bg = "transparent")
 
 # 专业出图：最大连通分量（LCC）
 set.seed(43)
@@ -241,9 +241,9 @@ p_avg_lcc <- ggraph::ggraph(tg_lcc, layout = "kk") +
   theme_void(base_family = "Arial")
 
 ggsave("figures/14_causal/dag_hc_avg_network_lcc.png", plot = p_avg_lcc,
-       width = 14, height = 10, units = "in", dpi = 1200, bg = "white")
+       width = 14, height = 10, units = "in", dpi = 2400, bg = "transparent")
 ggsave("figures/14_causal/dag_hc_avg_network_lcc.svg", plot = p_avg_lcc,
-       width = 14, height = 10, units = "in", bg = "white")
+       width = 14, height = 10, units = "in", bg = "transparent")
 
 # -----------------------------------------
 # 专业制图：PC-DAG（ggraph，层次布局）
@@ -265,19 +265,19 @@ p_pc <- ggraph(g_pc_tbl, layout = "sugiyama") +
   labs(title = "PC-DAG") +
   theme_void(base_family = "Arial")
 
-ggsave("figures/14_causal/dag_pc.png", plot = p_pc, width = 8, height = 6, units = "in", dpi = 1200, bg = "white")
-ggsave("figures/14_causal/dag_pc.svg", plot = p_pc, width = 8, height = 6, units = "in", bg = "white")
+ggsave("figures/14_causal/dag_pc.png", plot = p_pc, width = 8, height = 6, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/dag_pc.svg", plot = p_pc, width = 8, height = 6, units = "in", bg = "transparent")
 
 # -----------------------------------------
 # 专业制图：HC-DAG（边强度可视化）
 # 若可用 Rgraphviz，使用 bnlearn::strength.plot；否则回退到 ggraph 宽度映射
 # -----------------------------------------
 if (requireNamespace("Rgraphviz", quietly = TRUE)) {
-  svg("figures/14_causal/dag_hc.svg", width = 8, height = 6, onefile = FALSE, family = "Arial")
+  svg("figures/14_causal/dag_hc.svg", width = 8, height = 6, onefile = FALSE, family = "Arial", bg = "transparent")
   bnlearn::strength.plot(avg_hc, strength = boot_hc, threshold = threshold,
                          shape = "circle", layout = "dot")
   dev.off()
-  png("figures/14_causal/dag_hc.png", width = 3000, height = 2400, res = 1200, type = "cairo-png", family = "Arial")
+  png("figures/14_causal/dag_hc.png", width = 3000, height = 2400, res = 2400, type = "cairo-png", family = "Arial", bg = "transparent")
   bnlearn::strength.plot(avg_hc, strength = boot_hc, threshold = threshold,
                          shape = "circle", layout = "dot")
   dev.off()
@@ -296,8 +296,8 @@ if (requireNamespace("Rgraphviz", quietly = TRUE)) {
     geom_node_text(aes(label = name), size = 2.6, family = "Arial", vjust = -0.8) +
     labs(title = "HC-DAG (edge strength)") +
     theme_void(base_family = "Arial")
-  ggsave("figures/14_causal/dag_hc.png", plot = p_hc, width = 8, height = 6, units = "in", dpi = 1200, bg = "white")
-  ggsave("figures/14_causal/dag_hc.svg", plot = p_hc, width = 8, height = 6, units = "in", bg = "white")
+  ggsave("figures/14_causal/dag_hc.png", plot = p_hc, width = 8, height = 6, units = "in", dpi = 2400, bg = "transparent")
+  ggsave("figures/14_causal/dag_hc.svg", plot = p_hc, width = 8, height = 6, units = "in", bg = "transparent")
 }
 
 # -----------------------------------------
@@ -310,12 +310,15 @@ p_bar <- ggplot(topN, aes(x = reorder(paste(from, "->", to), strength), y = stre
   labs(title = "Edge Stability (Top 30)", x = "", y = "Strength (0-1)") +
   theme_minimal(base_family = "Arial") +
   theme(
-    panel.grid = element_line(color = "grey90", linewidth = 0.2),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.3),
     plot.title = element_text(face = "bold")
   )
-ggsave("figures/14_causal/edge_stability.png", plot = p_bar, width = 8, height = 6, units = "in", dpi = 1200, bg = "white")
-ggsave("figures/14_causal/edge_stability.svg", plot = p_bar, width = 8, height = 6, units = "in", bg = "white")
+ggsave("figures/14_causal/edge_stability.png", plot = p_bar, width = 8, height = 6, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/edge_stability.svg", plot = p_bar, width = 8, height = 6, units = "in", bg = "transparent")
 
  
 

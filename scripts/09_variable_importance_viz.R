@@ -35,7 +35,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -141,8 +141,10 @@ make_lollipop <- function(df_all, model_name, color, top_n = TOP_N) {
     )
   height_in <- max(3.0, 0.22 * nrow(dfm) + 1.0)
   out_base <- file.path("figures/09_variable_importance", paste0("lollipop_", tolower(model_name)))
-  ggsave(paste0(out_base, ".png"), p, width = 4.2, height = height_in, dpi = 1200, bg = "white")
-  ggsave(paste0(out_base, ".svg"), p, width = 4.2, height = height_in, bg = "white")
+  ggsave(paste0(out_base, ".png"), p, width = 4.2, height = height_in,
+         dpi = 2400, bg = "transparent")
+  ggsave(paste0(out_base, ".svg"), p, width = 4.2, height = height_in,
+         bg = "transparent")
   cat("  ✓ ", model_name, " : ", out_base, ".png/.svg\n", sep = "")
   return(list(plot = p, height = height_in))
 }
@@ -164,9 +166,9 @@ if(length(plot_list) > 0) {
   }
   total_h <- sum(vapply(plot_list, function(x) x$height, numeric(1)))
   ggsave("figures/09_variable_importance/importance_lollipop_by_model.png", pp,
-         width = 4.6, height = total_h, dpi = 1200, bg = "white")
+         width = 4.6, height = total_h, dpi = 2400, bg = "transparent")
   ggsave("figures/09_variable_importance/importance_lollipop_by_model.svg", pp,
-         width = 4.6, height = total_h, bg = "white")
+         width = 4.6, height = total_h, bg = "transparent")
   cat("  ✓ 汇总图: figures/09_variable_importance/importance_lollipop_by_model.png/.svg\n")
 }
 
@@ -198,9 +200,9 @@ p_heat <- ggplot(heatmap_long, aes(x = model, y = variable, fill = importance_no
 
 heatmap_height_in <- max(3.0, 0.20 * length(row_order) + 1.0)
 ggsave("figures/09_variable_importance/importance_heatmap.png", p_heat,
-       width = 3.6, height = heatmap_height_in, dpi = 1200, bg = "white")
+       width = 3.6, height = heatmap_height_in, dpi = 2400, bg = "transparent")
 ggsave("figures/09_variable_importance/importance_heatmap.svg", p_heat,
-       width = 3.6, height = heatmap_height_in, bg = "white")
+       width = 3.6, height = heatmap_height_in, bg = "transparent")
 
  
 
@@ -310,14 +312,18 @@ if(length(available_models) == 0) {
     shap_imp$model <- mn
     write.csv(shap_imp, file = file.path("output/09_variable_importance/shap", paste0("shap_global_", tolower(mn), ".csv")), row.names = FALSE)
 
-    # 绘制全局重要性条形图（英语标签，Arial，1200dpi）
+    # 绘制全局重要性条形图（英语标签，Arial）
     p_bar <- ggplot(shap_imp %>% head(30), aes(x = reorder(variable, importance), y = importance)) +
       geom_col(fill = "#4DAF4A") +
       coord_flip() +
       labs(title = paste0("SHAP Global Importance - ", mn), x = "Variable", y = "Mean |SHAP|") +
-      theme_minimal(base_family = "Arial", base_size = 7) +
+      viz_theme_nature(base_size = 7, title_size = 9) +
       theme(plot.title = element_text(size = 9, face = "bold", hjust = 0.5))
-    ggsave(filename = file.path("figures/09_variable_importance/shap", paste0("shap_global_bar_", tolower(mn), ".png")), p_bar, width = 3, height = 4, dpi = 1200, device = png, type = "cairo-png")
+    ggsave(
+      filename = file.path("figures/09_variable_importance/shap", paste0("shap_global_bar_", tolower(mn), ".png")),
+      p_bar, width = 3, height = 4, dpi = 2400, bg = "transparent",
+      device = png, type = "cairo-png"
+    )
     
 
     # 依赖图（Top 6）
@@ -329,10 +335,14 @@ if(length(available_models) == 0) {
         geom_point(alpha = 0.3, size = 0.3, color = "#377EB8") +
         geom_smooth(method = "loess", se = TRUE, color = "#E41A1C", size = 0.4) +
         labs(title = paste0("SHAP Dependence - ", mn, ": ", v), x = v, y = "SHAP value") +
-        theme_minimal(base_family = "Arial", base_size = 7) +
+        viz_theme_nature(base_size = 7, title_size = 9) +
         theme(plot.title = element_text(size = 9, face = "bold", hjust = 0.5))
       v_sanit <- gsub("[^A-Za-z0-9_]+", "_", v)
-      ggsave(filename = file.path("figures/09_variable_importance/shap", paste0("shap_dependence_", tolower(mn), "_", v_sanit, ".png")), p_dep, width = 2.4, height = 2.4, dpi = 1200, device = png, type = "cairo-png")
+      ggsave(
+        filename = file.path("figures/09_variable_importance/shap", paste0("shap_dependence_", tolower(mn), "_", v_sanit, ".png")),
+        p_dep, width = 2.4, height = 2.4, dpi = 2400, bg = "transparent",
+        device = png, type = "cairo-png"
+      )
       
     }
 

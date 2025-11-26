@@ -270,73 +270,17 @@ The algorithm uses ensemble regression trees that partition covariate space to m
 
 These CATE maps transform abstract causal effects into actionable conservation guidance, revealing not just *what* environmental variables causally affect species distributions, but *where* interventions targeting these variables will be most effective. This spatial prioritization is critical for conservation planning where resources are limited and must be allocated to maximize conservation outcomes.
 
-**CATE distribution statistics and interpretation**. CATE distributions across all river pixels were summarized using descriptive statistics: **mean (μ)=0.0134**, **standard deviation (σ)=0.0446**, **median (50th percentile)=0.0128**, and quantiles (**10th percentile=-0.0456**, **90th percentile=0.0639**). The range of CATE values (-0.046 to +0.064) indicates substantial spatial heterogeneity in intervention potential, with high-CATE regions (90th percentile, CATE>0.064) representing "high-leverage" zones where environmental improvements yield disproportionately large habitat suitability gains.
-
-Negative-CATE regions (10th percentile, CATE<-0.046) suggest potential habitat traps where environmental improvements may yield limited benefits under current climatic regimes, requiring alternative conservation strategies (e.g., urban heat island mitigation, stormwater management) that address different mechanisms. This spatial heterogeneity in treatment effects reveals that conservation strategies must be tailored to local environmental contexts, as one-size-fits-all interventions will be suboptimal when treatment effects vary spatially.
-
-## 2.6 Future Climate Projections and Uncertainty Quantification
-
-Predicting how species distributions will respond to future climate change is one of the most pressing challenges in conservation biology, requiring models that can reliably extrapolate beyond observed environmental conditions. However, future SDM projections face a fundamental tension: models trained on comprehensive environmental variable sets (e.g., our 47-variable suite including network-weighted land cover, soil properties) may achieve high predictive performance for current conditions, but many of these variables are unavailable or unreliable for future scenarios, creating extrapolation risks that can lead to unreliable projections.
-
-Here, we address this challenge through a "scenario-consistent variable retraining" strategy that ensures spatial and temporal transferability by using only variables available across both current and future time slices. We then project habitat suitability across China's river network under multiple climate scenarios, quantifying and decomposing uncertainty sources to provide robust, actionable predictions for conservation planning under climate change.
-
-### 2.6.1 Scenario-Consistent Variable Selection and Model Retraining
-
-A pervasive challenge in future SDM projections is **extrapolation beyond training data's environmental bounds** when predictor variables unavailable in future scenarios (e.g., upstream-weighted land cover under dynamic urbanization, soil properties under changing land use) are included. Extrapolation occurs when models make predictions for environmental conditions outside the range of training data, where species-environment relationships are unknown and may differ from relationships within the training range. This extrapolation risk is particularly acute for variables that are difficult to project into the future (e.g., land use, which depends on socioeconomic factors that are highly uncertain).
-
-To ensure spatial and temporal transferability, we adopted a **"scenario-available variable retraining" strategy**: all four models (Maxent, RF, GAM, NN) were retrained using only **6 predictors** available across both current (1970–2000) and future (2041–2060) time slices: **(i) mean annual temperature (bio01)**, representing overall thermal regime; **(ii) total annual precipitation (bio12)**, representing overall water availability; **(iii) temperature seasonality (bio04, SD of monthly means)**, representing intra-annual temperature variability; **(iv) precipitation seasonality (bio15, CV of monthly totals)**, representing intra-annual precipitation variability; **(v) elevation (dem_avg)**, representing topographic position; and **(vi) slope (slope_avg)**, representing terrain steepness.
-
-This reduced feature space sacrifices predictive resolution (6 variables vs. 47 variables) but eliminates extrapolation into unobserved covariate combinations, a critical requirement for reliable projections. The 6-variable set captures fundamental climatic and topographic drivers that are: (i) available in future climate scenarios (temperature, precipitation), (ii) static over decadal timescales (elevation, slope), and (iii) ecologically meaningful for freshwater fish distributions (thermal and hydrologic regimes, topographic habitat structure).
-
-**Future climate data source: CMIP6 downscaled projections**. We obtained downscaled CMIP6 climate data at 1-km resolution from WorldClim 2.1 for four **Shared Socioeconomic Pathways (SSPs)** representing different trajectories of greenhouse gas emissions and socioeconomic development: **SSP1-2.6** (low forcing, +1.8°C global warming by 2100, representing rapid decarbonization and sustainable development), **SSP2-4.5** (intermediate, +2.7°C, representing moderate emissions and mixed development), **SSP3-7.0** (high, +3.6°C, representing high emissions and regional rivalry), and **SSP5-8.5** (very high, +4.4°C, representing very high emissions and fossil-fueled development).
-
-Mid-century (2041–2060) averages across **23 GCM ensemble members** (BCC-CSM2-MR model) provided probabilistic climate projections that capture both mean climate change and internal climate variability. The 23-member ensemble enables quantification of climate model uncertainty, although we note that using a single GCM (BCC-CSM2-MR) limits our ability to fully characterize climate model structural uncertainty. Static topographic variables (elevation, slope) were held constant across time slices, consistent with negligible geomorphic change over decadal timescales (geomorphic processes operate on millennial timescales).
-
-**Model retraining and performance validation**. Retrained models (Maxent, RF, GAM, NN) using 6 scenario-available variables were evaluated on the same independent test set (n=403) to confirm maintained predictive performance despite variable reduction. All retrained models achieved AUC ≥0.87 (RF: 0.913, Maxent: 0.906, GAM: 0.878, NN: 0.872), demonstrating that scenario-consistent retraining maintains discrimination despite variable reduction. This performance retention indicates that the 6-variable set captures sufficient environmental information to predict species distributions, although we acknowledge that the reduced variable set may miss some fine-scale habitat drivers (e.g., local land cover, soil properties) that contribute to current predictions but are unavailable for future scenarios.
-
-### 2.6.2 Spatial Projection and Change Analysis
-
-For each SSP×model combination (4 scenarios × 4 models = **16 projections**), we predicted habitat suitability across China's river network pixels (~2.1 million pixels) using `predict(model, newdata=future_env_data, type="response")`. Predictions were computed at 1-km resolution and masked to river network pixels (flow accumulation ≥100 cells), ensuring that projections reflect only aquatic habitat where the species can potentially occur.
-
-**Summary statistics for characterizing distribution shifts**. We computed pixel-wise summary statistics (mean, SD, quantiles: 10th, 50th, 90th percentiles) across all 16 projections to characterize distribution shifts under climate change. Mean habitat suitability changes were calculated as: **Δ = (mean_suitability_future - mean_suitability_current) / mean_suitability_current × 100%**, providing percentage change metrics that are interpretable for conservation planning. These summary statistics reveal: (i) **mean changes** indicating overall distribution shifts (expansion or contraction), (ii) **spatial variability** (SD) indicating heterogeneity in climate change impacts across the river network, and (iii) **quantiles** revealing the distribution of impacts, including extreme changes that may represent critical conservation priorities.
-
-**Change mapping for identifying expansion and contraction zones**. We mapped pixel-wise changes (future - current) to identify expansion/contraction zones where habitat suitability increases or decreases under climate change. **Positive changes** indicate habitat suitability increases (potential range expansion), representing regions where climate change creates more favorable conditions for the species. **Negative changes** indicate habitat suitability decreases (potential range contraction), representing regions where climate change creates less favorable conditions that may lead to local extirpation.
-
-These change maps enable spatial prioritization of conservation actions: expansion zones may represent opportunities for assisted colonization or natural range shifts, while contraction zones may require immediate conservation interventions (e.g., habitat restoration, flow management) to prevent local extinctions. The spatial resolution (1-km) enables identification of fine-scale refugia and expansion corridors that may be missed in coarser-resolution projections.
-
-### 2.6.3 Uncertainty Quantification and Decomposition
-
-Future SDM projections are subject to multiple sources of uncertainty that can substantially affect conservation decisions: (i) **structural uncertainty** arising from different modeling algorithms making different assumptions about species-environment relationships, (ii) **scenario uncertainty** arising from different emission pathways and socioeconomic trajectories, and (iii) **climate model uncertainty** arising from different GCMs representing climate system processes differently. Quantifying and decomposing these uncertainty sources is critical for robust conservation planning, as high-uncertainty regions require more cautious interpretation and may benefit from adaptive management strategies.
-
-**Cross-model variance (structural uncertainty)**. For each SSP scenario, we computed the **standard deviation of predictions across the four models** (Maxent, RF, GAM, NN), reflecting algorithmic structural uncertainty. This quantifies how much predictions vary due to different modeling assumptions (e.g., linear vs. nonlinear, parametric vs. non-parametric, with vs. without spatial smoothing). High structural uncertainty indicates that predictions are sensitive to algorithmic choices, requiring multi-model ensembles to provide robust projections. Low structural uncertainty indicates that predictions are consistent across algorithms, providing greater confidence in projection reliability.
-
-**Cross-scenario variance (scenario uncertainty)**. For each model, we computed the **standard deviation of predictions across the four SSP scenarios** (SSP126, SSP245, SSP370, SSP585), reflecting climate forcing uncertainty. This quantifies how much predictions vary due to different emission pathways, revealing the sensitivity of species distributions to greenhouse gas emissions trajectories. High scenario uncertainty indicates that conservation outcomes depend critically on emission reductions, while low scenario uncertainty indicates that species distributions are relatively insensitive to emission pathways (within the range of scenarios considered).
-
-**Model agreement for consensus assessment**. We computed model agreement as: `agreement = 1 - (max_prediction - min_prediction)`, ranging from 0 (total disagreement, max-min=1) to 1 (perfect consensus, max-min=0). High agreement (agreement >0.85) indicates robust predictions supported across models, providing greater confidence for conservation planning. Low agreement (agreement <0.50) indicates high structural uncertainty requiring caution in interpretation, as predictions vary substantially depending on algorithmic choices.
-
-**Variance partitioning for uncertainty source identification**. We performed variance partitioning to quantify the relative contribution of structural uncertainty vs. scenario uncertainty to total prediction variance. This enables identification of whether conservation planning should prioritize: (i) **multi-model ensembles** (if structural uncertainty dominates, as different algorithms yield different predictions), or (ii) **scenario proliferation** (if scenario uncertainty dominates, as different emission pathways yield different predictions). This partitioning guides resource allocation in conservation planning, focusing efforts where they will have the greatest impact on reducing prediction uncertainty.
-
-**Results: structural uncertainty dominates prediction variance**. Structural uncertainty (cross-model variance) was quantified as the standard deviation of predictions across the four models (Maxent, RF, GAM, NN) for each pixel under fixed SSP scenarios. Mean structural uncertainty across all river pixels was **SD=0.0987** (median=0.0549, range: 5.95×10⁻⁶ to 0.530). Scenario uncertainty (cross-scenario variance) was quantified as the standard deviation of predictions across the four SSP scenarios (SSP126, SSP245, SSP370, SSP585) for each pixel under fixed models. Mean scenario uncertainty was **SD=0.0021** (substantially lower than structural uncertainty).
-
-Structural uncertainty exceeded scenario uncertainty by **4.7-fold** (0.0987/0.0021), indicating that **algorithmic choices dominate prediction variance over emission scenarios**. This finding has profound implications for conservation planning: (i) multi-model ensembles are essential for robust projections, as structural uncertainty is the dominant source of prediction variance; (ii) scenario uncertainty is relatively minor, suggesting that species distributions may be relatively insensitive to emission pathways within the range of scenarios considered; and (iii) conservation planning should prioritize multi-model ensembles over scenario proliferation to reduce prediction uncertainty.
-
-Model agreement (1 - (max - min)) had mean=0.780 (median=0.882, range: 3.95×10⁻⁹ to 0.999), with **78% of pixels showing agreement >0.85**, indicating high spatial consensus across models. This high agreement suggests that, despite structural uncertainty being the dominant source of variance, models generally agree on the direction and magnitude of climate change impacts across most of the river network. However, the 22% of pixels with lower agreement (<0.85) represent regions where algorithmic choices lead to substantially different predictions, requiring cautious interpretation and potentially benefiting from additional data collection or model refinement.
-
-## 2.7 Visualization and Figure Standards
-
 All figures were generated following Nature journal specifications to ensure publication-ready quality:
 
 **Resolution and format**: All figures were exported at **≥1200 dpi resolution** in both raster (PNG) and vector (SVG) formats. PNG files were generated using `png(filename, width=W, height=H, res=1200, family="Arial")`, and SVG files were generated using `ggsave(filename, plot=p, device="svg", width=W, height=H, dpi=1200)`.
 
 **Font specifications**: All text labels, axis labels, and legends used **Arial font family** (sans-serif) with appropriate sizing: titles (size=14, face="bold"), axis labels (size=12, face="bold"), axis text (size=10), legend text (size=9). Font loading was implemented using `sysfonts::font_add(family="Arial", regular="C:/Windows/Fonts/arial.ttf")` and `showtext::showtext_auto(enable=TRUE)`.
 
-**Color schemes**: All figures used Nature-style color schemes: (i) sequential data (e.g., habitat suitability): viridis color scale (`viridis::viridis(n=256, option="D")`), (ii) categorical data (e.g., model types): Nature color palette (Maxent="#E41A1C", RF="#4DAF4A", GAM="#984EA3", NN="#377EB8"), (iii) diverging data (e.g., change maps): red-white-blue color scale.
-
 **Language**: All figure labels, axis labels, legends, and captions were in **English** to meet international publication standards. No Chinese characters were included in any figures.
 
 **Spatial projections**: All spatial maps were projected to Albers Conic Equal Area (centered on 105°E, 35°N) and clipped to China's national boundary for consistent geographic representation.
 
-## 2.8 Software and Computational Environment
+### 2.6.6 Software and Computational Environment
 
 All analyses were conducted in **R version ≥4.0.0** using reproducible scripted workflows. Key R packages and versions included:
 
@@ -352,9 +296,9 @@ All analyses were conducted in **R version ≥4.0.0** using reproducible scripte
 
 **Reproducibility**: All random seeds were fixed (`set.seed(20251024)`) across all stochastic procedures (data partitioning, bootstrap resampling, model training) to ensure reproducibility. All scripts, data, and outputs are available in the project repository (`scripts/`, `output/`, `figures/`).
 
-## 2.9 Statistical Assumptions and Limitations
+### 2.6.7 Statistical Assumptions and Limitations
 
-### 2.9.1 Causal Discovery Assumptions
+#### 2.6.7.1 Causal Discovery Assumptions
 
 Causal discovery algorithms (PC, Hill-Climbing) make several key assumptions:
 
@@ -366,7 +310,7 @@ Causal discovery algorithms (PC, Hill-Climbing) make several key assumptions:
 
 **(iv) Sample size requirements**. Causal discovery requires sufficient sample size for reliable conditional independence tests. With n=1603 training samples and 47 variables, our sample-to-variable ratio (34:1) meets recommended thresholds (>10:1) for stable causal discovery.
 
-### 2.9.2 Species Distribution Modeling Assumptions
+#### 2.6.7.2 Species Distribution Modeling Assumptions
 
 SDM algorithms make several assumptions:
 
@@ -376,7 +320,7 @@ SDM algorithms make several assumptions:
 
 **(iii) Presence-background assumption**. Maxent and other presence-background models assume that background points represent "available" habitat rather than "suitable but unoccupied" habitat. We addressed this by restricting background points to river network pixels, ensuring they represent available aquatic habitat.
 
-### 2.9.3 Future Projection Limitations
+#### 2.6.7.3 Future Projection Limitations
 
 Future projections are subject to several limitations:
 
@@ -388,7 +332,7 @@ Future projections are subject to several limitations:
 
 **(iv) Static land use**. Future projections assume static land use, ignoring potential land-use change under SSP scenarios. Dynamic land-use scenarios (e.g., SSP-consistent urban expansion) could capture anthropogenic feedbacks absent in static projections.
 
-## 2.10 Data Availability and Code Reproducibility
+### 2.6.8 Data Availability and Code Reproducibility
 
 All occurrence data, environmental rasters, modeling outputs, and analysis scripts supporting the findings are available in the project repository. Key data files include:
 
@@ -397,7 +341,7 @@ All occurrence data, environmental rasters, modeling outputs, and analysis scrip
 - **Variable importance & SHAP**: `output/09_variable_importance/importance_summary.csv` and `shap/shap_global_*.csv`
 - **Response curves & ALE**: `output/10_response_curves/ale/ale_summary.csv`
 - **Causal discovery**: `output/14_causal/edges_summary.csv`, `ate_summary.csv`, `cate_summary.csv`
-- **Future projections**: `output/15_future_env/prediction_trends_all_models.csv`
+- **Future projections (19+4 and causal subset)**: outputs under `output/15_future_env_19plus4/` (current and future suitability rasters and trend summaries for the full 19+4 ensemble and the causal-subset models)
 - **Uncertainty maps**: `output/12_uncertainty/uncertainty_summary.csv` and spatial rasters
 - **Causal retraining**: `output/15b_causal_retraining/performance_comparison.csv`
 
@@ -411,7 +355,7 @@ All analyses were conducted using reproducible R scripts organized in the `scrip
 - Current predictions: `scripts/11_current_prediction_maps.R`
 - Causal discovery: `scripts/14_causal_discovery.R`, `scripts/14c_batch_ate_estimation.R`
 - Causal retraining: `scripts/15b_causal_informed_retraining.R`
-- Future projections: `scripts/15_future_env_projection.R`
+- Future projections: `scripts/15c_future_env_19plus4.R` (full 19+4 ensemble) and `scripts/15d_future_env_causal_subset.R` (causal-subset ensemble); the original 6-variable script `scripts/15_future_env_projection.R` is retained as a legacy implementation
 - Uncertainty quantification: `scripts/12_uncertainty_map.R`
 
 All scripts include detailed comments, logging output, and error handling to ensure reproducibility and transparency.

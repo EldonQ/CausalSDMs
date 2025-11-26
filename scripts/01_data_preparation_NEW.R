@@ -295,7 +295,10 @@ tryCatch({
                color = "#D62728", size = 1.5, alpha = 0.7) +
     theme_minimal(base_family = "Arial") +
     theme(
-      panel.grid = element_line(color = "gray90", size = 0.2),
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA),
       panel.border = element_rect(color = "black", fill = NA, size = 0.5),
       plot.title = element_text(size = 14, face = "bold"),
       axis.title = element_text(size = 12),
@@ -310,14 +313,14 @@ tryCatch({
     # 根据中国边界自动确定范围（参考viz_00脚本）
     coord_sf(expand = FALSE)
   
-  # 保存PNG和PDF格式
+  # 保存PNG格式（透明背景，2400 dpi）
   ggsave(
     filename = "figures/01_data_preparation/species_occurrence_map.png",
     plot = p,
     width = 10,
     height = 8,
-    dpi = 1200,  # Nature期刊要求 ≥1200 dpi
-    bg = "white"
+    dpi = 2400,
+    bg = "transparent"
   )
   
   log_message("  ✓ 已保存分布图: figures/01_data_preparation/species_occurrence_map.png")

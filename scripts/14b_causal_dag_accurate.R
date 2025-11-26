@@ -34,7 +34,7 @@ try({
     regular = "C:/Windows/Fonts/arial.ttf",
     bold = "C:/Windows/Fonts/arialbd.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -226,15 +226,15 @@ if(nrow(edges_strong) > 0) {
       plot.margin = margin(10, 10, 10, 10)
     )
   
-  # 保存高分辨率图件
+  # 保存高分辨率图件（2400dpi，透明背景）
   ggsave(
     "figures/14_causal/dag_hc_complete_accurate.png",
     plot = p1,
     width = 16,
     height = 12,
     units = "in",
-    dpi = 1200,
-    bg = "white"
+    dpi = 2400,
+    bg = "transparent"
   )
   
   ggsave(
@@ -243,7 +243,7 @@ if(nrow(edges_strong) > 0) {
     width = 16,
     height = 12,
     units = "in",
-    bg = "white"
+    bg = "transparent"
   )
   
   cat("  ✓ 已保存: dag_hc_complete_accurate.png/svg\n")
@@ -347,8 +347,8 @@ ggsave(
   width = 16,
   height = 12,
   units = "in",
-  dpi = 1200,
-  bg = "white"
+  dpi = 2400,
+  bg = "transparent"
 )
 
 ggsave(
@@ -357,7 +357,7 @@ ggsave(
   width = 16,
   height = 12,
   units = "in",
-  bg = "white"
+  bg = "transparent"
 )
 
 cat("  ✓ 已保存: dag_core_pathways_accurate.png/svg\n")
@@ -464,8 +464,8 @@ if(nrow(edges_cross) > 0) {
     width = 16,
     height = 12,
     units = "in",
-    dpi = 1200,
-    bg = "white"
+    dpi = 2400,
+    bg = "transparent"
   )
   
   ggsave(
@@ -474,7 +474,7 @@ if(nrow(edges_cross) > 0) {
     width = 16,
     height = 12,
     units = "in",
-    bg = "white"
+    bg = "transparent"
   )
   
   cat("  ✓ 已保存: dag_cross_domain_accurate.png/svg\n")
@@ -536,7 +536,10 @@ p4 <- ggplot(edge_group_summary,
     legend.position = "right",
     legend.title = element_text(size = 10, face = "bold"),
     legend.text = element_text(size = 9),
-    panel.grid.major = element_line(color = "grey90", linewidth = 0.3),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5),
     plot.margin = margin(10, 10, 10, 10)
   )
@@ -547,8 +550,8 @@ ggsave(
   width = 10,
   height = 8,
   units = "in",
-  dpi = 1200,
-  bg = "white"
+  dpi = 2400,
+  bg = "transparent"
 )
 
 ggsave(
@@ -557,7 +560,7 @@ ggsave(
   width = 10,
   height = 8,
   units = "in",
-  bg = "white"
+  bg = "transparent"
 )
 
 cat("  ✓ 已保存: dag_group_summary_accurate.png/svg\n")

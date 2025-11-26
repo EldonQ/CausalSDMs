@@ -11,7 +11,7 @@
 #   - 线要素:   E:/HydroSHEDS/HydroRIVERS_v10_as_shp/*.shp（包含字段 ORD_FLOW）
 # 输出文件:
 #   - 掩膜:   earthenvstreams_china/river_mask_ord2_6.tif  (0/1)
-#   - 预览图: figures/00_china_env_variables/river_mask_ord2_6_preview.png (1200 dpi)
+#   - 预览图: figures/00_china_env_variables/river_skeleton_preview.png (2400 dpi)
 # 作者: Nature级别科研项目
 # 日期: 2025-11-01
 # ==============================================================================
@@ -19,7 +19,7 @@
 # 初始化环境
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必要包（优先使用 terra 以提速；引入 ggplot2/svglite 统一出图风格）
 packages <- c("raster", "terra", "tidyverse", "ggplot2", "svglite")
@@ -69,8 +69,8 @@ cat("\n✓ 已生成掩膜: ", OUT_MASK_PATH_A, "\n", sep = "")
 cat("  - 兼容写入: ", OUT_MASK_PATH_COMPAT, "\n", sep = "")
 cat("  - 覆盖像元数: ", sum(!is.na(terra::values(mask_terra))), " / ", terra::ncell(mask_terra), "\n", sep = "")
 
-# 预览图：用 log1p(flow_acc2) 的强度进行渲染（更贴近“热图”质感）
-cat("生成预览图 (PNG+SVG, 1200dpi, Arial)...\n")
+# 预览图：用 log1p(flow_acc2) 的强度进行渲染（更贴近“热图”质感），输出2400dpi
+cat("生成预览图 (PNG+SVG, 2400dpi, Arial)...\n")
 try({
   viz_preview_river_intensity(flow_acc_path = REF_RASTER_PATH,
                               out_base = OUT_PREVIEW_BASE,

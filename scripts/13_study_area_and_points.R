@@ -88,7 +88,7 @@ p_area <- ggplot() +
   )
 
 ggsave("figures/13_study_area_and_points/study_area.png",
-       plot = p_area, width = 4, height = 3.2, dpi = 1200, bg = "transparent")
+       plot = p_area, width = 4, height = 3.2, dpi = 2400, bg = "transparent")
 ggsave("figures/13_study_area_and_points/study_area.svg",
        plot = p_area, width = 4, height = 3.2, bg = "transparent")
 
@@ -124,7 +124,7 @@ p_species <- ggplot() +
   )
 
 ggsave("figures/13_study_area_and_points/species_points.png",
-       plot = p_species, width = 4.2, height = 3.2, dpi = 1200, bg = "transparent")
+       plot = p_species, width = 4.2, height = 3.2, dpi = 2400, bg = "transparent")
 ggsave("figures/13_study_area_and_points/species_points.svg",
        plot = p_species, width = 4.2, height = 3.2, bg = "transparent")
 
@@ -157,7 +157,7 @@ p_background <- ggplot() +
   )
 
 ggsave("figures/13_study_area_and_points/background_points.png",
-       plot = p_background, width = 4.2, height = 3.2, dpi = 1200, bg = "transparent")
+       plot = p_background, width = 4.2, height = 3.2, dpi = 2400, bg = "transparent")
 ggsave("figures/13_study_area_and_points/background_points.svg",
        plot = p_background, width = 4.2, height = 3.2, bg = "transparent")
 
@@ -194,7 +194,7 @@ p_combined <- ggplot() +
   )
 
 ggsave("figures/13_study_area_and_points/combined_map.png",
-       plot = p_combined, width = 4.5, height = 3.4, dpi = 1200, bg = "transparent")
+       plot = p_combined, width = 4.5, height = 3.4, dpi = 2400, bg = "transparent")
 ggsave("figures/13_study_area_and_points/combined_map.svg",
        plot = p_combined, width = 4.5, height = 3.4, bg = "transparent")
 

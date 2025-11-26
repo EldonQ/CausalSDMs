@@ -206,9 +206,9 @@ p_violin <- ggplot(all_sensitivity, aes(x = variable, y = sensitivity, fill = la
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
 
 ggsave("figures/17_local_sensitivity/sensitivity_violin.png",
-       plot = p_violin, width = 4, height = 3, dpi = 1200)
+       plot = p_violin, width = 4, height = 3, dpi = 2400, bg = "transparent")
 ggsave("figures/17_local_sensitivity/sensitivity_violin.svg",
-       plot = p_violin, width = 4, height = 3)
+       plot = p_violin, width = 4, height = 3, bg = "transparent")
 
 cat("      ✓ 小提琴图已保存\n")
 
@@ -229,9 +229,9 @@ p_pd <- ggplot(all_pd, aes(x = x, y = y)) +
         strip.text = element_text(size = 6, face = "bold"))
 
 ggsave("figures/17_local_sensitivity/partial_dependence.png",
-       plot = p_pd, width = 5, height = 2.5, dpi = 1200)
+       plot = p_pd, width = 5, height = 2.5, dpi = 2400, bg = "transparent")
 ggsave("figures/17_local_sensitivity/partial_dependence.svg",
-       plot = p_pd, width = 5, height = 2.5)
+       plot = p_pd, width = 5, height = 2.5, bg = "transparent")
 
 cat("      ✓ 偏依赖图已保存\n")
 
@@ -251,9 +251,9 @@ p_heatmap <- ggplot(sensitivity_summary,
   theme(panel.grid = element_blank())
 
 ggsave("figures/17_local_sensitivity/sensitivity_heatmap.png",
-       plot = p_heatmap, width = 3, height = 3, dpi = 1200)
+       plot = p_heatmap, width = 3, height = 3, dpi = 2400, bg = "transparent")
 ggsave("figures/17_local_sensitivity/sensitivity_heatmap.svg",
-       plot = p_heatmap, width = 3, height = 3)
+       plot = p_heatmap, width = 3, height = 3, bg = "transparent")
 
 cat("      ✓ 热图已保存\n")
 

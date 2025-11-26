@@ -84,7 +84,7 @@ for(model in names(pred_list)) {
 
 # PNG版本
 png("figures/08_model_evaluation/roc_curves.png",
-    width = 3000, height = 3000, res = 1200, family = "Arial")
+    width = 3000, height = 3000, res = 2400, family = "Arial", bg = "transparent")
 par(mar = c(4, 4, 2, 1))
 plot(0, 0, type = "n", xlim = c(0, 1), ylim = c(0, 1),
      xlab = "False Positive Rate (1 - Specificity)", 
@@ -102,10 +102,10 @@ for(model in names(roc_list)) {
 }
 
 legend("bottomright", legend = legend_text, col = legend_cols,
-       lwd = 2, cex = 0.7, bg = "white")
+       lwd = 2, cex = 0.7, bg = "transparent")
 dev.off()
 
-cat("  ✓ ROC曲线: figures/08_model_evaluation/roc_curves.png\n")
+cat("  ", "ROC曲线: figures/08_model_evaluation/roc_curves.png\n")
 
 # 3. 绘制性能指标对比
 cat("\n步骤 3/4: 绘制性能指标对比...\n")
@@ -118,7 +118,7 @@ metrics_data <- test_eval %>%
 
 # PNG版本
 png("figures/08_model_evaluation/performance_comparison.png",
-    width = 3600, height = 2400, res = 1200, family = "Arial")
+    width = 3600, height = 2400, res = 2400, family = "Arial", bg = "transparent")
 
 p <- ggplot(metrics_data, aes(x = Metric, y = Value, fill = model)) +
   geom_bar(stat = "identity", position = "dodge", color = "black", linewidth = 0.3) +
@@ -134,12 +134,15 @@ p <- ggplot(metrics_data, aes(x = Metric, y = Value, fill = model)) +
     legend.position = "bottom",
     legend.title = element_text(size = 6, face = "bold"),
     legend.text = element_text(size = 6),
-    panel.grid.minor = element_blank()
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA)
   )
 print(p)
 dev.off()
 
-cat("  ✓ 性能对比: figures/08_model_evaluation/performance_comparison.png\n")
+cat("  ", "性能对比: figures/08_model_evaluation/performance_comparison.png\n")
 
 # 4. 保存综合评估结果
 cat("\n步骤 4/4: 保存综合评估结果...\n")

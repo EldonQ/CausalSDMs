@@ -88,7 +88,7 @@ if (file.exists(override_path)) {
 
   # 可视化：原始（即白名单）相关性热图
   png("figures/04_collinearity/correlation_heatmap_original.png",
-      width = 4000, height = 4000, res = 1200, family = "Arial")
+      width = 4000, height = 4000, res = 2400, family = "Arial", bg = "transparent")
   par(mar = c(1, 1, 2, 1))
   corrplot(cor_matrix,
            method = "color",
@@ -285,7 +285,7 @@ cat("\n步骤 7/7: 生成可视化...\n")
 
 # 绘制原始相关性热图
 png("figures/04_collinearity/correlation_heatmap_original.png",
-    width = 4000, height = 4000, res = 1200, family = "Arial")
+    width = 4000, height = 4000, res = 2400, family = "Arial", bg = "transparent")
 
 par(mar = c(1, 1, 2, 1))
 corrplot(cor_matrix,
@@ -305,7 +305,7 @@ cat("  ✓ 已保存: figures/04_collinearity/correlation_heatmap_original.png\n
 cor_final <- cor(model_data_final[, selected_vars_cor], use = "complete.obs")
 
 png("figures/04_collinearity/correlation_heatmap_final.png",
-    width = 3000, height = 3000, res = 1200, family = "Arial")
+    width = 3000, height = 3000, res = 2400, family = "Arial", bg = "transparent")
 
 if(length(selected_vars_cor) <= 20) {
   corrplot(cor_final,
@@ -341,7 +341,7 @@ var_counts <- data.frame(
 )
 
 png("figures/04_collinearity/variable_selection_summary.png",
-    width = 2400, height = 1800, res = 1200, family = "Arial")
+    width = 2400, height = 1800, res = 2400, family = "Arial", bg = "transparent")
 
 par(mar = c(4, 4, 2, 1))
 barplot(var_counts$n_vars,

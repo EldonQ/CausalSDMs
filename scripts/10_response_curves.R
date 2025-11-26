@@ -34,7 +34,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -114,7 +114,7 @@ for(i in seq_along(top_vars)) {
     viz_theme_nature(base_size = 8, title_size = 9)
 
   ggsave(filename = paste0("figures/10_response_curves/individual/", var, ".png"),
-         plot = p, width = 2.4, height = 2.4, units = "in", dpi = 1200, bg = "white")
+         plot = p, width = 2.4, height = 2.4, units = "in", dpi = 2400, bg = "transparent")
 
   plot_list[[length(plot_list) + 1]] <- p
 }
@@ -127,7 +127,7 @@ cat("\n步骤 3/3: 绘制Top 10组合图...\n")
 if(length(plot_list) > 0) {
   comb <- cowplot::plot_grid(plotlist = plot_list, ncol = 2, align = "hv")
   ggsave("figures/10_response_curves/response_curves_top10.png",
-         plot = comb, width = 4.8, height = 6, units = "in", dpi = 1200, bg = "white")
+         plot = comb, width = 4.8, height = 6, units = "in", dpi = 2400, bg = "transparent")
 }
 
 cat("  ✓ 组合图: figures/10_response_curves/response_curves_top10.png\n")
@@ -241,10 +241,11 @@ if(length(available_models) == 0) {
       try({
         plt$layers <- Filter(function(ly){ !inherits(ly$geom, "GeomRug") }, plt$layers)
       }, silent = TRUE)
-      plt <- plt + ggplot2::labs(title = paste0("ALE - ", mn, ": ", v), x = v, y = "ALE of .y") + theme_nature()
+      plt <- plt + ggplot2::labs(title = paste0("ALE - ", mn, ": ", v), x = v, y = "ALE of .y") +
+        viz_theme_nature(base_size = 7, title_size = 9)
 
       png(file.path("figures/10_response_curves/ale", paste0("ale_", tolower(mn), "_", v_sanit, ".png")),
-          width = 2400, height = 2400, res = 1200, type = "cairo-png", family = "Arial")
+          width = 2400, height = 2400, res = 2400, type = "cairo-png", family = "Arial", bg = "transparent")
       print(plt)
       dev.off()
 

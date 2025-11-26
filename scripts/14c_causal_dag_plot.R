@@ -36,7 +36,7 @@ try({
   sysfonts::font_add(family = "Arial",
                       regular = "C:/Windows/Fonts/arial.ttf",
                       bold    = "C:/Windows/Fonts/arialbd.ttf")
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -165,8 +165,10 @@ plot_network <- function(tg, title_text, file_stub, layout = "kk") {
     labs(title = title_text, subtitle = paste0("Edges ≥ ", threshold, "; layout=", layout)) +
     theme_void(base_family = "Arial")
 
-  ggsave(paste0("figures/14_causal/", file_stub, ".png"), p, width = 14, height = 10, units = "in", dpi = 1200, bg = "white")
-  ggsave(paste0("figures/14_causal/", file_stub, ".svg"), p, width = 14, height = 10, units = "in", bg = "white")
+  ggsave(paste0("figures/14_causal/", file_stub, ".png"), p,
+         width = 14, height = 10, units = "in", dpi = 2400, bg = "transparent")
+  ggsave(paste0("figures/14_causal/", file_stub, ".svg"), p,
+         width = 14, height = 10, units = "in", bg = "transparent")
 }
 
 # 1) 完整平均网络（非孤立点）
@@ -198,8 +200,10 @@ p_core <- ggraph::ggraph(tg_core, layout = "kk") +
   labs(title = paste0("Core Causal Pathways (Top ", topN, ")"),
        subtitle = "Edge width/color = bootstrap strength") +
   theme_void(base_family = "Arial")
-ggsave("figures/14_causal/dag_core_topN.png", p_core, width = 16, height = 12, units = "in", dpi = 1200, bg = "white")
-ggsave("figures/14_causal/dag_core_topN.svg", p_core, width = 16, height = 12, units = "in", bg = "white")
+ggsave("figures/14_causal/dag_core_topN.png", p_core,
+       width = 16, height = 12, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/dag_core_topN.svg", p_core,
+       width = 16, height = 12, units = "in", bg = "transparent")
 
 # 4) 跨组因果关系（取TopN中跨组边）
 cat("绘制: 跨组因果边 ...\n")
@@ -224,8 +228,10 @@ p_cross <- ggraph::ggraph(tg_cross, layout = "graphopt") +
   labs(title = "Cross-Domain Causal Relationships",
        subtitle = "Edges among different variable groups (Top N set)") +
   theme_void(base_family = "Arial")
-ggsave("figures/14_causal/dag_cross_group.png", p_cross, width = 16, height = 12, units = "in", dpi = 1200, bg = "white")
-ggsave("figures/14_causal/dag_cross_group.svg", p_cross, width = 16, height = 12, units = "in", bg = "white")
+ggsave("figures/14_causal/dag_cross_group.png", p_cross,
+       width = 16, height = 12, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/dag_cross_group.svg", p_cross,
+       width = 16, height = 12, units = "in", bg = "transparent")
 
 # 5) 边强度矩阵
 cat("绘制: 边强度矩阵 ...\n")
@@ -246,9 +252,15 @@ p_mat <- ggplot(adj_long, aes(x = to, y = from, fill = strength)) +
         axis.title  = element_text(size = 9, face = "bold"),
         plot.title  = element_text(face = "bold", hjust = 0.5),
         plot.subtitle= element_text(color = "grey30", hjust = 0.5),
-        legend.position = "right")
-ggsave("figures/14_causal/dag_strength_matrix.png", p_mat, width = 12, height = 11, units = "in", dpi = 1200, bg = "white")
-ggsave("figures/14_causal/dag_strength_matrix.svg", p_mat, width = 12, height = 11, units = "in", bg = "white")
+        legend.position = "right",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA))
+ggsave("figures/14_causal/dag_strength_matrix.png", p_mat,
+       width = 12, height = 11, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/dag_strength_matrix.svg", p_mat,
+       width = 12, height = 11, units = "in", bg = "transparent")
 
 # 6) PC-DAG
 if (!is.null(pc_fit)) {
@@ -269,12 +281,13 @@ if (!is.null(pc_fit)) {
     ggraph::geom_node_text(aes(label = name), size = 2.6, family = "Arial", vjust = -0.8) +
     labs(title = "PC-DAG") +
     theme_void(base_family = "Arial")
-  ggsave("figures/14_causal/dag_pc_layout.png", p_pc, width = 10, height = 7.5, units = "in", dpi = 1200, bg = "white")
-  ggsave("figures/14_causal/dag_pc_layout.svg", p_pc, width = 10, height = 7.5, units = "in", bg = "white")
+  ggsave("figures/14_causal/dag_pc_layout.png", p_pc,
+         width = 10, height = 7.5, units = "in", dpi = 2400, bg = "transparent")
+  ggsave("figures/14_causal/dag_pc_layout.svg", p_pc,
+         width = 10, height = 7.5, units = "in", bg = "transparent")
 } else {
   cat("跳过PC-DAG（无graph_pc.rds）\n")
 }
 
 cat("\n✓ 全部因果DAG图件已生成：figures/14_causal/ 下查看。\n\n")
-
 

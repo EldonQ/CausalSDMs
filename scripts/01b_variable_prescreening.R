@@ -53,7 +53,7 @@ suppressWarnings({
   }
 })
 showtext::showtext_auto(enable = TRUE)
-showtext::showtext_opts(dpi = 1200)
+showtext::showtext_opts(dpi = 2400)
 
 cat("======================================\n")
 cat("环境变量质量检查\n")
@@ -549,9 +549,9 @@ cat("\n步骤 6/6: 生成可视化报告...\n")
 category_matrix <- as.matrix(category_summary[, c("passed", "removed")])
 rownames(category_matrix) <- category_summary$category
 
-# PNG版本（1200dpi，4.8x3.6英寸）
+# PNG版本（2400dpi，4.8x3.6英寸，透明背景）
 png("figures/01b_variable_prescreening/category_summary.png", 
-    width = 4800, height = 3600, res = 1200, type = "cairo")
+    width = 4800, height = 3600, res = 2400, type = "cairo", bg = "transparent")
 par(mar = c(7, 6, 3, 2), family = "Arial")  # 调整边距并使用Arial
 barplot(t(category_matrix), beside = TRUE,
         col = c("#2E7D32", "#D32F2F"),
@@ -567,9 +567,9 @@ cat("  ✓ 已保存: figures/01b_variable_prescreening/category_summary.png\n")
 
 # 图2: 有效值数量 vs 标准差（如果有问题变量）
 if(n_removed > 0) {
-  # PNG
+  # PNG（2400dpi，透明背景）
   png("figures/01b_variable_prescreening/quality_scatter.png",
-      width = 4800, height = 3600, res = 1200, type = "cairo")
+      width = 4800, height = 3600, res = 2400, type = "cairo", bg = "transparent")
   par(mar = c(5.5, 6, 3, 2), family = "Arial")
   plot(var_stats$n_valid, log10(var_stats$sd + 1e-10),
        col = ifelse(var_stats$passed_qc, "#2E7D32", "#D32F2F"),

@@ -41,7 +41,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -208,8 +208,10 @@ if(nrow(ate_valid) > 0) {
          y = "Environmental Variable") +
     theme_minimal(base_family = "Arial", base_size = 8) +
     theme(
-      panel.grid.major.y = element_blank(),
+      panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA),
       panel.border = element_rect(color = "black", fill = NA, linewidth = 0.3),
       plot.title = element_text(face = "bold", size = 9),
       plot.subtitle = element_text(size = 7, color = "grey40"),
@@ -217,9 +219,9 @@ if(nrow(ate_valid) > 0) {
     )
   
   ggsave("figures/14_causal/ate_all_variables_forest.png", 
-         plot = p_forest, width = 6, height = 5, dpi = 1200, bg = "white")
+         plot = p_forest, width = 6, height = 5, dpi = 2400, bg = "transparent")
   ggsave("figures/14_causal/ate_all_variables_forest.svg", 
-         plot = p_forest, width = 6, height = 5, bg = "white")
+         plot = p_forest, width = 6, height = 5, bg = "transparent")
   
   cat("  ✓ 森林图已保存\n")
 }

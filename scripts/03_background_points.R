@@ -662,7 +662,6 @@ write.csv(combined_data,
           "output/03_background_points/combined_presence_absence.csv",
           row.names = FALSE)
 cat("  ✓ 已保存: output/03_background_points/combined_presence_absence.csv\n")
-
 # 生成均匀性诊断图（等面积投影下的背景点密度栅格），用于快速检查“全国水网均匀分布”
 try({
   bg_sf <- sf::st_as_sf(background_df[, c("lon","lat")], coords = c("lon","lat"), crs = 4326)
@@ -679,17 +678,16 @@ try({
       plot.title = element_text(size = 9, face = "bold", hjust = 0.5, margin = margin(b = 8)),
       axis.title = element_text(size = 7),
       axis.text = element_text(size = 6),
+      panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA),
       plot.margin = margin(t = 10, r = 5, b = 10, l = 5)
     )
   ggsave("figures/03_background_points/bg_uniformity_laea_hex.png",
-         plot = p_hex, width = 3.5, height = 3.0, dpi = 1200)
+         plot = p_hex, width = 3.5, height = 3.0, dpi = 2400, bg = "transparent")
   cat("  ✓ 均匀性诊断图: figures/03_background_points/bg_uniformity_laea_hex.png\n")
 }, silent = TRUE)
-
-# 保存处理日志
-sink("output/03_background_points/processing_log.txt")
-cat("背景点生成日志\n")
 cat("处理时间:", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n")
 
 cat("=== 数据统计 ===\n")

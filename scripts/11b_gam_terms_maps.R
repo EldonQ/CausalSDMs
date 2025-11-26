@@ -31,7 +31,7 @@ for(pkg in packages) {
 dir.create("output/11_prediction_maps/rasters", showWarnings = FALSE, recursive = TRUE)
 dir.create("figures/11_prediction_maps", showWarnings = FALSE, recursive = TRUE)
 
-# 字体（期刊要求：Arial，1200dpi）
+# 字体（期刊要求：Arial，2400dpi）
 try({
   sysfonts::font_add(
     family = "Arial",
@@ -40,7 +40,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 

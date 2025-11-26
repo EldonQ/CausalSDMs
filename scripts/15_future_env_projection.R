@@ -37,7 +37,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -169,7 +169,7 @@ for(bio_idx in key_biocs) {
     cat("  - ", bio_code, ": ", bio_name, "\n", sep = "")
   
   png(paste0("figures/15_future_env/", bio_code, "_comparison.png"),
-        width = 4800, height = 3600, res = 1200, type = "cairo-png", family = "Arial")
+        width = 4800, height = 3600, res = 2400, type = "cairo-png", family = "Arial", bg = "transparent")
   par(mfrow = c(2, 2), mar = c(2, 2, 3, 3), oma = c(0, 0, 2, 0))
   for(ssp in names(future_bioc_list)) {
     bio_layer <- future_bioc_list[[ssp]][[bio_idx]]
@@ -204,12 +204,12 @@ climate_data <- stats_df %>%
 p_temp <- ggplot(climate_data, aes(x = scenario_name, y = temp_annual)) +
   geom_bar(stat = "identity", fill = "#D73027", alpha = 0.8) +
     labs(title = "Annual Mean Temperature (2041-2060)", x = "SSP Scenario", y = expression("Temperature ("*degree*"C)")) +
-    theme_minimal(base_size = 8)
+    viz_theme_nature(base_size = 8, title_size = 9)
 
 p_precip <- ggplot(climate_data, aes(x = scenario_name, y = precip_annual)) +
   geom_bar(stat = "identity", fill = "#2166AC", alpha = 0.8) +
     labs(title = "Annual Precipitation (2041-2060)", x = "SSP Scenario", y = "Precipitation (mm)") +
-    theme_minimal(base_size = 8)
+    viz_theme_nature(base_size = 8, title_size = 9)
 
 climate_range <- climate_data %>%
     dplyr::select(scenario_name, temp_max, temp_min) %>%
@@ -218,10 +218,10 @@ p_range <- ggplot(climate_range, aes(x = scenario_name, y = temp, fill = type)) 
   geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
     scale_fill_manual(values = c("temp_max" = "#D73027", "temp_min" = "#4575B4"), labels = c("Max (Warmest)", "Min (Coldest)"), name = "Temperature") +
     labs(title = "Temperature Range (2041-2060)", x = "SSP Scenario", y = expression("Temperature ("*degree*"C)")) +
-    theme_minimal(base_size = 8)
+    viz_theme_nature(base_size = 8, title_size = 9)
 
   combined_plot <- (p_temp | p_precip) / p_range
-  ggsave("figures/15_future_env/climate_change_trends.png", plot = combined_plot, width = 4, height = 3, dpi = 1200)
+  ggsave("figures/15_future_env/climate_change_trends.png", plot = combined_plot, width = 4, height = 3, dpi = 2400, bg = "transparent")
   cat("      ✓ 气候变化趋势图已保存\n")
 }
 
@@ -337,13 +337,15 @@ for(ssp in names(future_bioc_list)) {
 
     # 图件
     out_base <- file.path(out_dir_fig, paste0("prediction_", tolower(mn)))
-    viz_save_raster_map(r = pred_r_river, out_base = out_base,
-                        title = paste0(ssp, " - ", mn),
-                        palette = "magma", q_limits = c(0.01, 0.99),
-                        china_path = "earthenvstreams_china/china_boundary.shp",
-                        width_in = 8, height_in = 6)
+    pred_r_river_thick <- viz_thicken_river_raster(pred_r_river, w_size = 3)
+    viz_save_raster_map(
+      r = pred_r_river_thick, out_base = out_base,
+      title = paste0(ssp, " - ", mn),
+      palette = "magma", q_limits = c(0.01, 0.99),
+      china_path = "earthenvstreams_china/china_boundary.shp",
+      width_in = 8, height_in = 6
+    )
 
-    
   }
   if(length(summary_rows) > 0) {
     summary_df <- dplyr::bind_rows(summary_rows)
@@ -381,7 +383,7 @@ if(length(all_summaries) > 0) {
     labs(title = "Habitat Suitability Trend across SSP Scenarios",
          x = "Scenario", y = "Mean Predicted Suitability", color = "Model") +
     viz_theme_nature(base_size = 8, title_size = 9)
-  ggsave(out_trend_png, p_trend, width = 4.8, height = 3.2, dpi = 1200, bg = "white")
+  ggsave(out_trend_png, p_trend, width = 4.8, height = 3.2, dpi = 2400, bg = "transparent")
 }
 
 cat("\n======================================\n")

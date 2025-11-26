@@ -33,7 +33,7 @@ try({
     regular = "C:/Windows/Fonts/arial.ttf",
     bold = "C:/Windows/Fonts/arialbd.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -168,7 +168,9 @@ if(nrow(edges_strong) > 0) {
       legend.position = "right",
       legend.title = element_text(size = 9, face = "bold"),
       legend.text = element_text(size = 8),
-      plot.margin = margin(10, 10, 10, 10)
+      plot.margin = margin(10, 10, 10, 10),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
     )
   
   # 保存高分辨率图件
@@ -178,8 +180,8 @@ if(nrow(edges_strong) > 0) {
     width = 14,
     height = 10,
     units = "in",
-    dpi = 1200,
-    bg = "white"
+    dpi = 2400,
+    bg = "transparent"
   )
   
   ggsave(
@@ -188,7 +190,7 @@ if(nrow(edges_strong) > 0) {
     width = 14,
     height = 10,
     units = "in",
-    bg = "white"
+    bg = "transparent"
   )
   
   cat("  ✓ 已保存: dag_hc_professional_v2.png/svg\n")
@@ -276,7 +278,9 @@ p2 <- ggraph(tg2, layout = "kk") +
     legend.position = "right",
     legend.title = element_text(size = 9, face = "bold"),
     legend.text = element_text(size = 8),
-    plot.margin = margin(10, 10, 10, 10)
+    plot.margin = margin(10, 10, 10, 10),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA)
   )
 
 ggsave(
@@ -285,8 +289,8 @@ ggsave(
   width = 14,
   height = 10,
   units = "in",
-  dpi = 1200,
-  bg = "white"
+  dpi = 2400,
+  bg = "transparent"
 )
 
 ggsave(
@@ -295,7 +299,7 @@ ggsave(
   width = 14,
   height = 10,
   units = "in",
-  bg = "white"
+  bg = "transparent"
 )
 
 cat("  ✓ 已保存: dag_core_pathways_v2.png/svg\n")
@@ -385,7 +389,9 @@ if(nrow(edges_cross_group) > 0) {
       legend.position = "right",
       legend.title = element_text(size = 9, face = "bold"),
       legend.text = element_text(size = 8),
-      plot.margin = margin(10, 10, 10, 10)
+      plot.margin = margin(10, 10, 10, 10),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA)
     )
   
   ggsave(
@@ -394,8 +400,8 @@ if(nrow(edges_cross_group) > 0) {
     width = 14,
     height = 10,
     units = "in",
-    dpi = 1200,
-    bg = "white"
+    dpi = 2400,
+    bg = "transparent"
   )
   
   ggsave(
@@ -404,7 +410,7 @@ if(nrow(edges_cross_group) > 0) {
     width = 14,
     height = 10,
     units = "in",
-    bg = "white"
+    bg = "transparent"
   )
   
   cat("  ✓ 已保存: dag_cross_domain_v2.png/svg\n")
@@ -471,7 +477,10 @@ p4 <- ggplot(adj_long, aes(x = to, y = from, fill = strength)) +
     legend.position = "right",
     legend.title = element_text(size = 9, face = "bold"),
     legend.text = element_text(size = 8),
-    panel.grid = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
     plot.margin = margin(10, 10, 10, 10)
   )
 
@@ -481,8 +490,8 @@ ggsave(
   width = 12,
   height = 11,
   units = "in",
-  dpi = 1200,
-  bg = "white"
+  dpi = 2400,
+  bg = "transparent"
 )
 
 ggsave(
@@ -491,10 +500,10 @@ ggsave(
   width = 12,
   height = 11,
   units = "in",
-  bg = "white"
+  bg = "transparent"
 )
 
-cat("  ✓ 已保存: dag_strength_matrix_v2.png/svg\n")
+cat("  已保存: dag_strength_matrix_v2.png/svg\n")
 
 cat("\n======================================\n")
 cat("专业DAG图绘制完成！\n")

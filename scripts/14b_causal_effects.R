@@ -36,7 +36,7 @@ try({
     italic = "C:/Windows/Fonts/ariali.ttf",
     bolditalic = "C:/Windows/Fonts/arialbi.ttf"
   )
-  showtext::showtext_opts(dpi = 1200)
+  showtext::showtext_opts(dpi = 2400)
   showtext::showtext_auto(enable = TRUE)
 }, silent = TRUE)
 
@@ -157,12 +157,16 @@ p_ate <- ggplot(df_ate, aes(x = term, y = estimate, ymin = ymin, ymax = ymax)) +
   labs(title = "ATE (DoubleML)", x = "", y = "ATE Estimate") +
   theme_minimal(base_family = "Arial") +
   theme(
-    panel.grid = element_line(color = "grey90", linewidth = 0.2),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.3),
     plot.title = element_text(face = "bold")
   )
 
-ggsave("figures/14_causal/ate_forest.png", plot = p_ate, width = 3.6, height = 2.7, units = "in", dpi = 1200, bg = "white")
+ggsave("figures/14_causal/ate_forest.png", plot = p_ate,
+       width = 3.6, height = 2.7, units = "in", dpi = 2400, bg = "transparent")
 
 df_cate <- data.frame(tau_hat = tau_hat)
 p_cate <- ggplot(df_cate, aes(x = tau_hat)) +
@@ -170,12 +174,16 @@ p_cate <- ggplot(df_cate, aes(x = tau_hat)) +
   labs(title = "CATE Distribution (causal forest)", x = "Estimated CATE", y = "Count") +
   theme_minimal(base_family = "Arial") +
   theme(
-    panel.grid = element_line(color = "grey90", linewidth = 0.2),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_rect(fill = "transparent", color = NA),
+    plot.background = element_rect(fill = "transparent", color = NA),
     panel.border = element_rect(color = "black", fill = NA, linewidth = 0.3),
     plot.title = element_text(face = "bold")
   )
 
-ggsave("figures/14_causal/cate_distribution.png", plot = p_cate, width = 3.6, height = 2.7, units = "in", dpi = 1200, bg = "white")
+ggsave("figures/14_causal/cate_distribution.png", plot = p_cate,
+       width = 3.6, height = 2.7, units = "in", dpi = 2400, bg = "transparent")
 
 cat("\n======================================\n")
 cat("因果效应估计完成\n")
