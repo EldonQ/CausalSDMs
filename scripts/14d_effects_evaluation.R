@@ -13,12 +13,12 @@
 # 初始化环境
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必要的包（中文注释：全部使用英文标注出图，Arial字体，1200dpi）
 packages <- c("tidyverse", "DoubleML", "grf", "ranger", "mlr3", "mlr3learners", "sysfonts", "showtext")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
@@ -28,17 +28,20 @@ dir.create("output/14_causal", showWarnings = FALSE, recursive = TRUE)
 dir.create("figures/14_causal", showWarnings = FALSE, recursive = TRUE)
 
 # 字体设置
-try({
-  sysfonts::font_add(
-    family = "Arial",
-    regular = "C:/Windows/Fonts/arial.ttf",
-    bold = "C:/Windows/Fonts/arialbd.ttf",
-    italic = "C:/Windows/Fonts/ariali.ttf",
-    bolditalic = "C:/Windows/Fonts/arialbi.ttf"
-  )
-  showtext::showtext_opts(dpi = 2400)
-  showtext::showtext_auto(enable = TRUE)
-}, silent = TRUE)
+try(
+  {
+    sysfonts::font_add(
+      family = "Arial",
+      regular = "C:/Windows/Fonts/arial.ttf",
+      bold = "C:/Windows/Fonts/arialbd.ttf",
+      italic = "C:/Windows/Fonts/ariali.ttf",
+      bolditalic = "C:/Windows/Fonts/arialbi.ttf"
+    )
+    showtext::showtext_opts(dpi = 600)
+    showtext::showtext_auto(enable = TRUE)
+  },
+  silent = TRUE
+)
 
 cat("\n======================================\n")
 cat("因果效应估计 (ATE/CATE)\n")
@@ -58,26 +61,27 @@ y <- dat$presence
 args <- commandArgs(trailingOnly = TRUE)
 arg_treat <- NA_character_
 arg_cutoff <- "median"
-if(length(args) > 0) {
-  for(a in args) {
-    if(grepl("^--treat=", a)) arg_treat <- sub("^--treat=", "", a)
-    if(grepl("^--cutoff=", a)) arg_cutoff <- sub("^--cutoff=", "", a)
+if (length(args) > 0) {
+  for (a in args) {
+    if (grepl("^--treat=", a)) arg_treat <- sub("^--treat=", "", a)
+    if (grepl("^--cutoff=", a)) arg_cutoff <- sub("^--cutoff=", "", a)
   }
 }
 
-if(!is.na(arg_treat) && arg_treat %in% env_vars) {
+if (!is.na(arg_treat) && arg_treat %in% env_vars) {
   treat_var <- arg_treat
 } else {
   # 若未指定，则默认选择在变量重要性中排名靠前者（若存在该文件），否则env_vars首个
   imp_path <- "output/09_variable_importance/importance_summary.csv"
-  if(file.exists(imp_path)) {
+  if (file.exists(imp_path)) {
     imp_df <- read.csv(imp_path)
-    treat_candidates <- imp_df %>% dplyr::group_by(variable) %>%
+    treat_candidates <- imp_df %>%
+      dplyr::group_by(variable) %>%
       dplyr::summarise(mean_imp = mean(importance_normalized, na.rm = TRUE), .groups = "drop") %>%
       dplyr::arrange(dplyr::desc(mean_imp)) %>%
       dplyr::pull(variable)
     treat_var <- intersect(treat_candidates, env_vars)[1]
-    if(is.na(treat_var)) treat_var <- env_vars[1]
+    if (is.na(treat_var)) treat_var <- env_vars[1]
   } else {
     treat_var <- env_vars[1]
   }
@@ -143,11 +147,11 @@ cat("步骤 4/4: 图件...\n")
 nm <- colnames(ate_tbl)
 nm_norm <- tolower(gsub("[^a-z0-9]+", "", nm))
 idx_coef <- which(nm_norm %in% c("coef", "estimate", "theta"))
-idx_se   <- which(nm_norm %in% c("stderr", "se", "stderr", "stderror"))
-if(length(idx_coef) == 0) idx_coef <- 1
-if(length(idx_se) == 0) idx_se <- min(which(sapply(ate_tbl, is.numeric) & (seq_along(nm) != idx_coef)))
+idx_se <- which(nm_norm %in% c("stderr", "se", "stderr", "stderror"))
+if (length(idx_coef) == 0) idx_coef <- 1
+if (length(idx_se) == 0) idx_se <- min(which(sapply(ate_tbl, is.numeric) & (seq_along(nm) != idx_coef)))
 est <- as.numeric(ate_tbl[1, idx_coef])
-se  <- as.numeric(ate_tbl[1, idx_se])
+se <- as.numeric(ate_tbl[1, idx_se])
 ci <- 1.96 * se
 
 df_ate <- data.frame(term = paste0("T: ", treat_var), estimate = est, ymin = est - ci, ymax = est + ci)
@@ -165,8 +169,10 @@ p_ate <- ggplot(df_ate, aes(x = term, y = estimate, ymin = ymin, ymax = ymax)) +
     plot.title = element_text(face = "bold")
   )
 
-ggsave("figures/14_causal/ate_forest.png", plot = p_ate,
-       width = 3.6, height = 2.7, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/ate_forest.png",
+  plot = p_ate,
+  width = 3.6, height = 2.7, units = "in", dpi = 600, bg = "transparent"
+)
 
 df_cate <- data.frame(tau_hat = tau_hat)
 p_cate <- ggplot(df_cate, aes(x = tau_hat)) +
@@ -182,8 +188,10 @@ p_cate <- ggplot(df_cate, aes(x = tau_hat)) +
     plot.title = element_text(face = "bold")
   )
 
-ggsave("figures/14_causal/cate_distribution.png", plot = p_cate,
-       width = 3.6, height = 2.7, units = "in", dpi = 2400, bg = "transparent")
+ggsave("figures/14_causal/cate_distribution.png",
+  plot = p_cate,
+  width = 3.6, height = 2.7, units = "in", dpi = 600, bg = "transparent"
+)
 
 cat("\n======================================\n")
 cat("因果效应估计完成\n")
@@ -192,5 +200,3 @@ cat("======================================\n\n")
 cat("✓ ATE: output/14_causal/ate_summary.csv\n")
 cat("✓ CATE: output/14_causal/cate_summary.csv\n")
 cat("✓ 图件: figures/14_causal/ate_forest.png / cate_distribution.png\n\n")
-
-

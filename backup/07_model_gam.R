@@ -17,20 +17,20 @@ rm(list = ls())
 gc()
 
 # 设置工作目录
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必要的包
 packages <- c("tidyverse", "mgcv", "caret", "pROC")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
 }
 
 # 创建输出目录
-if(!dir.exists("output")) dir.create("output")
-if(!dir.exists("output/07_model_gam")) dir.create("output/07_model_gam", recursive = TRUE)
+if (!dir.exists("output")) dir.create("output")
+if (!dir.exists("output/07_model_gam")) dir.create("output/07_model_gam", recursive = TRUE)
 
 cat("======================================\n")
 cat("GAM (广义加性模型) 训练\n")
@@ -68,10 +68,12 @@ presence_indices <- which(model_data$presence == 1)
 background_indices <- which(model_data$presence == 0)
 
 # 80%训练, 20%测试
-train_presence <- sample(presence_indices, 
-                         size = round(0.8 * length(presence_indices)))
-train_background <- sample(background_indices, 
-                           size = round(0.8 * length(background_indices)))
+train_presence <- sample(presence_indices,
+  size = round(0.8 * length(presence_indices))
+)
+train_background <- sample(background_indices,
+  size = round(0.8 * length(background_indices))
+)
 
 train_indices <- c(train_presence, train_background)
 test_indices <- setdiff(1:nrow(model_data), train_indices)
@@ -79,12 +81,16 @@ test_indices <- setdiff(1:nrow(model_data), train_indices)
 train_data <- model_data[train_indices, ]
 test_data <- model_data[test_indices, ]
 
-cat("  - 训练集样本数: ", nrow(train_data), 
-    " (出现:", sum(train_data$presence == 1), 
-    ", 背景:", sum(train_data$presence == 0), ")\n", sep = "")
-cat("  - 测试集样本数: ", nrow(test_data), 
-    " (出现:", sum(test_data$presence == 1), 
-    ", 背景:", sum(test_data$presence == 0), ")\n", sep = "")
+cat("  - 训练集样本数: ", nrow(train_data),
+  " (出现:", sum(train_data$presence == 1),
+  ", 背景:", sum(train_data$presence == 0), ")\n",
+  sep = ""
+)
+cat("  - 测试集样本数: ", nrow(test_data),
+  " (出现:", sum(test_data$presence == 1),
+  ", 背景:", sum(test_data$presence == 0), ")\n",
+  sep = ""
+)
 
 # ------------------------------------------------------------------------------
 # 3. 构建GAM模型公式（数据驱动的k值选择）
@@ -95,11 +101,11 @@ cat("\n步骤 3/8: 构建GAM模型公式...\n")
 valid_vars <- c()
 k_values <- c()
 
-for(v in env_vars) {
+for (v in env_vars) {
   n_unique <- length(unique(train_data[[v]]))
-  
+
   # 至少需要10个唯一值才能使用平滑项
-  if(n_unique >= 10) {
+  if (n_unique >= 10) {
     valid_vars <- c(valid_vars, v)
     # 提升灵活度：k 随唯一值数量而增，最小5，最大15（避免过拟合）
     k_val <- min(max(5, floor(n_unique / 4)), 15)
@@ -134,70 +140,59 @@ n_presence_train <- sum(train_data$presence == 1)
 n_background_train <- sum(train_data$presence == 0)
 weight_ratio <- n_background_train / n_presence_train
 
-train_data$weight <- ifelse(train_data$presence == 1, 
-                             weight_ratio, 
-                             1)
+train_data$weight <- ifelse(train_data$presence == 1,
+  weight_ratio,
+  1
+)
 
 start_time <- Sys.time()
 
 # 使用binomial family (logistic regression)
 # method = "REML" (Restricted Maximum Likelihood)
-gam_model <- tryCatch({
-  bam(  # 使用bam代替gam,处理大数据集更快
-    formula = gam_formula,
-    family = binomial(link = "logit"),
-    data = train_data,
-    weights = weight,
-    method = "fREML",      # fast REML
-    select = TRUE,         # 额外惩罚进行变量选择（防止过拟合）
-    discrete = TRUE,       # 加速
-    gamma = 1.2            # 轻微提高惩罚强度，提升稳健性
-  )
-}, error = function(e) {
-  cat("  - bam失败,尝试使用标准gam...\n")
-  gam(
-    formula = gam_formula,
-    family = binomial(link = "logit"),
-    data = train_data,
-    weights = weight,
-    method = "REML",
-    select = TRUE,
-    gamma = 1.2
-  )
-})
+gam_model <- tryCatch(
+  {
+    bam( # 使用bam代替gam,处理大数据集更快
+      formula = gam_formula,
+      family = binomial(link = "logit"),
+      data = train_data,
+      weights = weight,
+      method = "fREML", # fast REML
+      select = TRUE, # 额外惩罚进行变量选择（防止过拟合）
+      discrete = TRUE, # 加速
+      gamma = 1.2 # 轻微提高惩罚强度，提升稳健性
+    )
+  },
+  error = function(e) {
+    cat("  - bam失败,尝试使用标准gam...\n")
+    gam(
+      formula = gam_formula,
+      family = binomial(link = "logit"),
+      data = train_data,
+      weights = weight,
+      method = "REML",
+      select = TRUE,
+      gamma = 1.2
+    )
+  }
+)
 
 end_time <- Sys.time()
 training_time <- as.numeric(difftime(end_time, start_time, units = "secs"))
 
 cat("  - 模型训练完成 (耗时: ", round(training_time, 2), " 秒)\n", sep = "")
-cat("  - Deviance explained: ", 
-    round(summary(gam_model)$dev.expl * 100, 2), "%\n", sep = "")
-
-# 诊断：并发曲率与 k-index（保存日志，便于后续增强）
-try({
-  conc <- mgcv::concurvity(gam_model, full = TRUE)
-  sink("output/07_model_gam/diagnostics.txt")
-  cat("Concurvity summary (diagonal/overall)\n\n")
-  print(lapply(conc, function(m) round(apply(m, 2, max, na.rm=TRUE), 3)))
-  cat("\nGAM check (k-index)\n\n")
-  print(utils::capture.output(mgcv::gam.check(gam_model)) )
-  sink()
-}, silent = TRUE)
-
-# ------------------------------------------------------------------------------
-# 5. 模型预测
-# ------------------------------------------------------------------------------
 cat("\n步骤 5/8: 进行预测...\n")
 
 # 训练集预测(使用response类型得到概率)
-train_pred <- predict(gam_model, 
-                      newdata = train_data, 
-                      type = "response")
+train_pred <- predict(gam_model,
+  newdata = train_data,
+  type = "response"
+)
 
 # 测试集预测
-test_pred <- predict(gam_model, 
-                     newdata = test_data, 
-                     type = "response")
+test_pred <- predict(gam_model,
+  newdata = test_data,
+  type = "response"
+)
 
 cat("  - 训练集预测完成\n")
 cat("  - 测试集预测完成\n")
@@ -218,8 +213,10 @@ cat("  - 训练集 AUC: ", round(train_auc, 4), "\n", sep = "")
 cat("  - 测试集 AUC: ", round(test_auc, 4), "\n", sep = "")
 
 # 使用最大化TSS的阈值
-coords_result <- coords(test_roc, "best", ret = "all", 
-                        best.method = "youden")
+coords_result <- coords(test_roc, "best",
+  ret = "all",
+  best.method = "youden"
+)
 optimal_threshold <- coords_result$threshold
 test_sensitivity <- coords_result$sensitivity
 test_specificity <- coords_result$specificity
@@ -230,18 +227,20 @@ cat("  - TSS: ", round(test_tss, 4), "\n", sep = "")
 
 # 计算Kappa
 test_pred_binary <- ifelse(test_pred >= optimal_threshold, 1, 0)
-confusion_matrix <- table(Predicted = test_pred_binary, 
-                          Observed = test_data$presence)
+confusion_matrix <- table(
+  Predicted = test_pred_binary,
+  Observed = test_data$presence
+)
 
-if(nrow(confusion_matrix) == 2 && ncol(confusion_matrix) == 2) {
+if (nrow(confusion_matrix) == 2 && ncol(confusion_matrix) == 2) {
   # 计算Kappa
   observed_accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
-  expected_accuracy <- sum(rowSums(confusion_matrix) * 
-                           colSums(confusion_matrix)) / sum(confusion_matrix)^2
+  expected_accuracy <- sum(rowSums(confusion_matrix) *
+    colSums(confusion_matrix)) / sum(confusion_matrix)^2
   kappa <- (observed_accuracy - expected_accuracy) / (1 - expected_accuracy)
-  
+
   cat("  - Kappa: ", round(kappa, 4), "\n", sep = "")
-  
+
   # 打印混淆矩阵
   cat("\n  混淆矩阵 (测试集):\n")
   print(confusion_matrix)
@@ -269,23 +268,23 @@ var_importance <- data.frame(
 )
 
 # 1. 提取平滑项的统计量
-if("s.table" %in% names(gam_summary) && nrow(gam_summary$s.table) > 0) {
+if ("s.table" %in% names(gam_summary) && nrow(gam_summary$s.table) > 0) {
   smooth_stats <- gam_summary$s.table
-  
+
   # 检查列名（可能是F或Chi.sq）
-  stat_col <- if("F" %in% colnames(smooth_stats)) {
+  stat_col <- if ("F" %in% colnames(smooth_stats)) {
     "F"
-  } else if("Chi.sq" %in% colnames(smooth_stats)) {
+  } else if ("Chi.sq" %in% colnames(smooth_stats)) {
     "Chi.sq"
   } else {
     NULL
   }
-  
-  if(!is.null(stat_col)) {
+
+  if (!is.null(stat_col)) {
     # 提取平滑项变量名（从行名中提取）
     smooth_vars <- gsub("s\\((.+?)\\)", "\\1", rownames(smooth_stats))
-    smooth_vars <- gsub(",k=.*", "", smooth_vars)  # 移除k参数
-    
+    smooth_vars <- gsub(",k=.*", "", smooth_vars) # 移除k参数
+
     smooth_importance <- data.frame(
       variable = smooth_vars,
       type = "smooth",
@@ -293,22 +292,22 @@ if("s.table" %in% names(gam_summary) && nrow(gam_summary$s.table) > 0) {
       p_value = smooth_stats[, "p-value"],
       stringsAsFactors = FALSE
     )
-    
+
     # 计算重要性分数
-    smooth_importance$importance <- smooth_importance$statistic * 
-                                    (1 - pmin(smooth_importance$p_value, 0.999))
-    
+    smooth_importance$importance <- smooth_importance$statistic *
+      (1 - pmin(smooth_importance$p_value, 0.999))
+
     var_importance <- rbind(var_importance, smooth_importance)
   }
 }
 
 # 2. 提取线性项（参数项）的统计量
-if("p.table" %in% names(gam_summary) && nrow(gam_summary$p.table) > 1) {
-  param_stats <- gam_summary$p.table[-1, , drop = FALSE]  # 移除截距
-  
-  if(nrow(param_stats) > 0) {
+if ("p.table" %in% names(gam_summary) && nrow(gam_summary$p.table) > 1) {
+  param_stats <- gam_summary$p.table[-1, , drop = FALSE] # 移除截距
+
+  if (nrow(param_stats) > 0) {
     param_vars <- rownames(param_stats)
-    
+
     param_importance <- data.frame(
       variable = param_vars,
       type = "linear",
@@ -316,29 +315,29 @@ if("p.table" %in% names(gam_summary) && nrow(gam_summary$p.table) > 1) {
       p_value = param_stats[, "Pr(>|t|)"],
       stringsAsFactors = FALSE
     )
-    
+
     # 计算重要性分数
-    param_importance$importance <- param_importance$statistic * 
-                                   (1 - pmin(param_importance$p_value, 0.999))
-    
+    param_importance$importance <- param_importance$statistic *
+      (1 - pmin(param_importance$p_value, 0.999))
+
     var_importance <- rbind(var_importance, param_importance)
   }
 }
 
 # 按重要性排序
-if(nrow(var_importance) > 0) {
-  var_importance <- var_importance[order(var_importance$importance, 
-                                         decreasing = TRUE), ]
-  
-  
+if (nrow(var_importance) > 0) {
+  var_importance <- var_importance[order(var_importance$importance,
+    decreasing = TRUE
+  ), ]
+
+
   # 打印前10个最重要变量
   cat("\n  前10个最重要变量:\n")
   print(head(var_importance[, c("variable", "type", "importance")], 10))
-  
 } else {
   # 如果无法提取统计表,使用排列重要性
   cat("  - 警告: 无法从模型中提取统计表,使用排列重要性方法...\n")
-  
+
   var_importance <- data.frame(
     variable = valid_vars,
     type = "permutation",
@@ -347,30 +346,32 @@ if(nrow(var_importance) > 0) {
     importance = 0,
     stringsAsFactors = FALSE
   )
-  
+
   baseline_auc <- test_auc
-  
-  for(i in 1:length(valid_vars)) {
+
+  for (i in 1:length(valid_vars)) {
     var_name <- valid_vars[i]
     test_permuted <- test_data
     test_permuted[, var_name] <- sample(test_permuted[, var_name])
-    
-    pred_permuted <- predict(gam_model, 
-                             newdata = test_permuted, 
-                             type = "response")
+
+    pred_permuted <- predict(gam_model,
+      newdata = test_permuted,
+      type = "response"
+    )
     roc_permuted <- roc(test_permuted$presence, pred_permuted, quiet = TRUE)
     auc_permuted <- auc(roc_permuted)
-    
+
     var_importance$importance[i] <- baseline_auc - auc_permuted
-    
-    if(i %% 5 == 0) {
+
+    if (i %% 5 == 0) {
       cat("    - 已处理 ", i, "/", length(valid_vars), " 个变量\n", sep = "")
     }
   }
-  
-  var_importance <- var_importance[order(var_importance$importance, 
-                                         decreasing = TRUE), ]
-  
+
+  var_importance <- var_importance[order(var_importance$importance,
+    decreasing = TRUE
+  ), ]
+
   # 打印前10个最重要变量
   cat("\n  前10个最重要变量:\n")
   print(head(var_importance[, c("variable", "importance")], 10))
@@ -378,8 +379,9 @@ if(nrow(var_importance) > 0) {
 
 # 保存变量重要性
 write.csv(var_importance,
-          "output/07_model_gam/variable_importance.csv",
-          row.names = FALSE)
+  "output/07_model_gam/variable_importance.csv",
+  row.names = FALSE
+)
 cat("\n  - 已保存: output/07_gam_variable_importance.csv\n")
 
 # ------------------------------------------------------------------------------
@@ -405,8 +407,9 @@ predictions_df$predicted[train_indices] <- train_pred
 predictions_df$predicted[test_indices] <- test_pred
 
 write.csv(predictions_df,
-          "output/07_model_gam/predictions.csv",
-          row.names = FALSE)
+  "output/07_model_gam/predictions.csv",
+  row.names = FALSE
+)
 cat("  - 已保存预测结果: output/07_gam_predictions.csv\n")
 
 # 保存评估指标
@@ -426,8 +429,9 @@ evaluation_df <- data.frame(
 )
 
 write.csv(evaluation_df,
-          "output/07_model_gam/evaluation.csv",
-          row.names = FALSE)
+  "output/07_model_gam/evaluation.csv",
+  row.names = FALSE
+)
 cat("  - 已保存评估结果: output/07_gam_evaluation.csv\n")
 
 # ------------------------------------------------------------------------------
@@ -446,11 +450,13 @@ cat("  AUC: ", round(test_auc, 4), "\n", sep = "")
 cat("  TSS: ", round(test_tss, 4), "\n", sep = "")
 cat("  Sensitivity: ", round(test_sensitivity, 4), "\n", sep = "")
 cat("  Specificity: ", round(test_specificity, 4), "\n", sep = "")
-if(!is.na(kappa)) {
+if (!is.na(kappa)) {
   cat("  Kappa: ", round(kappa, 4), "\n", sep = "")
 }
-cat("  Deviance Explained: ", 
-    round(summary(gam_model)$dev.expl * 100, 2), "%\n", sep = "")
+cat("  Deviance Explained: ",
+  round(summary(gam_model)$dev.expl * 100, 2), "%\n",
+  sep = ""
+)
 
 # 保存日志
 sink("output/07_model_gam/processing_log.txt")
@@ -473,4 +479,3 @@ print(head(var_importance, 10))
 sink()
 
 cat("\n脚本执行完成!\n")
-

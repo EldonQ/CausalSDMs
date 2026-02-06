@@ -27,17 +27,20 @@ for (pkg in packages) {
   }
 }
 
-try({
-  sysfonts::font_add(
-    family = "Arial",
-    regular = "C:/Windows/Fonts/arial.ttf",
-    bold = "C:/Windows/Fonts/arialbd.ttf",
-    italic = "C:/Windows/Fonts/ariali.ttf",
-    bolditalic = "C:/Windows/Fonts/arialbi.ttf"
-  )
-  showtext::showtext_opts(dpi = 2400)
-  showtext::showtext_auto(enable = TRUE)
-}, silent = TRUE)
+try(
+  {
+    sysfonts::font_add(
+      family = "Arial",
+      regular = "C:/Windows/Fonts/arial.ttf",
+      bold = "C:/Windows/Fonts/arialbd.ttf",
+      italic = "C:/Windows/Fonts/ariali.ttf",
+      bolditalic = "C:/Windows/Fonts/arialbi.ttf"
+    )
+    showtext::showtext_opts(dpi = 2400)
+    showtext::showtext_auto(enable = TRUE)
+  },
+  silent = TRUE
+)
 
 source("scripts/visualization/viz_utils.R")
 
@@ -74,8 +77,8 @@ static_vars <- intersect(core_drivers, intersect(static_candidates, future_var_s
 
 # 气候变量：将 core_drivers 中的 hydro_wavg_XX 按编号映射到 bioXX
 hydro_vars <- core_drivers[grepl("^hydro_wavg_0*[0-9]+$", core_drivers)]
-hydro_idx  <- suppressWarnings(as.integer(sub("^hydro_wavg_0*([0-9]+)$", "\\1", hydro_vars)))
-hydro_idx  <- hydro_idx[!is.na(hydro_idx)]
+hydro_idx <- suppressWarnings(as.integer(sub("^hydro_wavg_0*([0-9]+)$", "\\1", hydro_vars)))
+hydro_idx <- hydro_idx[!is.na(hydro_idx)]
 mapped_bio <- sprintf("bio%02d", hydro_idx)
 mapped_bio <- mapped_bio[mapped_bio %in% future_var_set]
 
@@ -111,14 +114,16 @@ train_df <- train_df[stats::complete.cases(train_df[, c("presence", vars_causal_
 set.seed(20251121)
 pres_idx <- which(train_df$presence == 1)
 back_idx <- which(train_df$presence == 0)
-train_idx <- c(sample(pres_idx, round(0.8 * length(pres_idx))),
-               sample(back_idx, round(0.8 * length(back_idx))))
+train_idx <- c(
+  sample(pres_idx, round(0.8 * length(pres_idx))),
+  sample(back_idx, round(0.8 * length(back_idx)))
+)
 test_idx <- setdiff(seq_len(nrow(train_df)), train_idx)
 
 X_train <- train_df[train_idx, vars_causal_future, drop = FALSE]
-X_test  <- train_df[test_idx,  vars_causal_future, drop = FALSE]
+X_test <- train_df[test_idx, vars_causal_future, drop = FALSE]
 y_train <- train_df$presence[train_idx]
-y_test  <- train_df$presence[test_idx]
+y_test <- train_df$presence[test_idx]
 
 models_causal <- list()
 
@@ -142,19 +147,22 @@ models_causal$GAM <- gam_model
 # NN
 cat("  - NN (causal 19+4 交集)...\n")
 mu <- sapply(X_train, mean, na.rm = TRUE)
-sdv <- sapply(X_train, sd, na.rm = TRUE); sdv[sdv == 0 | is.na(sdv)] <- 1
+sdv <- sapply(X_train, sd, na.rm = TRUE)
+sdv[sdv == 0 | is.na(sdv)] <- 1
 X_train_s <- as.data.frame(sweep(sweep(as.matrix(X_train), 2, mu, "-"), 2, sdv, "/"))
-X_test_s  <- as.data.frame(sweep(sweep(as.matrix(X_test),  2, mu, "-"), 2, sdv, "/"))
+X_test_s <- as.data.frame(sweep(sweep(as.matrix(X_test), 2, mu, "-"), 2, sdv, "/"))
 size_hidden <- max(3, floor(length(vars_causal_future) / 2))
 
-tmp_nn <- nnet::nnet(x = X_train_s, y = y_train, size = size_hidden, linout = FALSE,
-                     rang = 0.1, decay = 5e-4, maxit = 500, trace = FALSE)
+tmp_nn <- nnet::nnet(
+  x = X_train_s, y = y_train, size = size_hidden, linout = FALSE,
+  rang = 0.1, decay = 5e-4, maxit = 500, trace = FALSE
+)
 models_causal$NN <- list(model = tmp_nn, mean = mu, sd = sdv, vars = vars_causal_future)
 
 saveRDS(models_causal$Maxnet, "output/15_future_env_19plus4/models_causal_19plus4/maxnet_causal_19plus4.rds")
-saveRDS(models_causal$RF,     "output/15_future_env_19plus4/models_causal_19plus4/rf_causal_19plus4.rds")
-saveRDS(models_causal$GAM,    "output/15_future_env_19plus4/models_causal_19plus4/gam_causal_19plus4.rds")
-saveRDS(models_causal$NN,     "output/15_future_env_19plus4/models_causal_19plus4/nn_causal_19plus4.rds")
+saveRDS(models_causal$RF, "output/15_future_env_19plus4/models_causal_19plus4/rf_causal_19plus4.rds")
+saveRDS(models_causal$GAM, "output/15_future_env_19plus4/models_causal_19plus4/gam_causal_19plus4.rds")
+saveRDS(models_causal$NN, "output/15_future_env_19plus4/models_causal_19plus4/nn_causal_19plus4.rds")
 
 # 评估
 cat("\n  - 评估简化模型性能...\n")
@@ -179,9 +187,9 @@ auc_nn <- as.numeric(pROC::auc(pROC::roc(y_test, pred_nn, quiet = TRUE)))
 
 eval_all <- dplyr::bind_rows(
   data.frame(model = "Maxnet", AUC = auc_mx),
-  data.frame(model = "RF",     AUC = auc_rf),
-  data.frame(model = "GAM",    AUC = auc_gam),
-  data.frame(model = "NN",     AUC = auc_nn)
+  data.frame(model = "RF", AUC = auc_rf),
+  data.frame(model = "GAM", AUC = auc_gam),
+  data.frame(model = "NN", AUC = auc_nn)
 )
 write.csv(eval_all, "output/15_future_env_19plus4/evaluation_causal_19plus4.csv", row.names = FALSE)
 
@@ -204,24 +212,42 @@ for (ssp in ssp_scenarios) {
 }
 
 fa <- raster::brick("earthenvstreams_china/flow_acc.tif")[[2]]
-fa_vals <- raster::getValues(fa); fa_vals[fa_vals <= 0] <- NA
+fa_vals <- raster::getValues(fa)
+fa_vals[fa_vals <= 0] <- NA
 river_mask <- raster::setValues(fa, fa_vals)
 rm(fa_vals)
 
-hydro_ord2_6 <- viz_load_hydrorivers_ord2_6(crs_target = raster::crs(fa))
+# hydro_ord2_6 <- viz_load_hydrorivers_ord2_6(crs_target = raster::crs(fa)) # Removed
 
 make_predict_fun <- function(model_name, model_obj) {
-  if (model_name == "Maxnet") return(function(m, df) { as.numeric(predict(m, df, type = "logistic")) })
-  if (model_name == "RF")     return(function(m, df) { as.numeric(predict(m, newdata = df, type = "prob")[, "1"]) })
-  if (model_name == "GAM")    return(function(m, df) { as.numeric(predict(m, newdata = df, type = "response")) })
-  if (model_name == "NN")     return(function(m, df) {
-    mu <- m$mean; sdv <- m$sd; mod <- m$model; vars <- m$vars
-    sdv[sdv == 0 | is.na(sdv)] <- 1
-    x <- as.matrix(df[, vars, drop = FALSE])
-    x <- sweep(x, 2, mu[vars], "-")
-    x <- sweep(x, 2, sdv[vars], "/")
-    as.numeric(nnet:::predict.nnet(mod, x, type = "raw"))
-  })
+  if (model_name == "Maxnet") {
+    return(function(m, df) {
+      as.numeric(predict(m, df, type = "logistic"))
+    })
+  }
+  if (model_name == "RF") {
+    return(function(m, df) {
+      as.numeric(predict(m, newdata = df, type = "prob")[, "1"])
+    })
+  }
+  if (model_name == "GAM") {
+    return(function(m, df) {
+      as.numeric(predict(m, newdata = df, type = "response"))
+    })
+  }
+  if (model_name == "NN") {
+    return(function(m, df) {
+      mu <- m$mean
+      sdv <- m$sd
+      mod <- m$model
+      vars <- m$vars
+      sdv[sdv == 0 | is.na(sdv)] <- 1
+      x <- as.matrix(df[, vars, drop = FALSE])
+      x <- sweep(x, 2, mu[vars], "-")
+      x <- sweep(x, 2, sdv[vars], "/")
+      as.numeric(nnet:::predict.nnet(mod, x, type = "raw"))
+    })
+  }
 }
 
 build_future_env_causal <- function(bioc_stack) {
@@ -255,8 +281,10 @@ build_future_env_causal <- function(bioc_stack) {
     static_list[[length(static_list) + 1]] <- soil_soc
   }
   stk <- raster::stack(c(bioc_stack[[1:19]], static_list))
-  lon_r <- raster::init(stk[[1]], fun = "x"); names(lon_r) <- "lon"
-  lat_r <- raster::init(stk[[1]], fun = "y"); names(lat_r) <- "lat"
+  lon_r <- raster::init(stk[[1]], fun = "x")
+  names(lon_r) <- "lon"
+  lat_r <- raster::init(stk[[1]], fun = "y")
+  names(lat_r) <- "lat"
   stk <- raster::addLayer(stk, lon_r, lat_r)
   return(stk)
 }
@@ -281,17 +309,34 @@ for (ssp in names(future_bioc_list)) {
     mdl <- models_causal[[mn]]
     pred_fun <- make_predict_fun(mn, mdl)
     tif_path <- file.path(out_dir_ras, paste0("pred_", tolower(mn), "_causal_19plus4.tif"))
-    if (file.exists(tif_path)) { try({ file.remove(tif_path) }, silent = TRUE) }
-    pred_r <- raster::predict(env_stk, model = mdl, fun = pred_fun, filename = tif_path,
-                              overwrite = TRUE, progress = "text")
+    if (file.exists(tif_path)) {
+      try(
+        {
+          file.remove(tif_path)
+        },
+        silent = TRUE
+      )
+    }
+    pred_r <- raster::predict(env_stk,
+      model = mdl, fun = pred_fun, filename = tif_path,
+      overwrite = TRUE, progress = "text"
+    )
     pred_r <- raster::clamp(pred_r, lower = 0, upper = 1, useValues = TRUE)
     river_mask_ref <- suppressWarnings(raster::projectRaster(river_mask, pred_r, method = "ngb"))
     pred_r_river <- raster::mask(pred_r, river_mask_ref)
     tif_mask_path <- file.path(out_dir_ras, paste0("pred_", tolower(mn), "_causal_19plus4_river.tif"))
-    if (file.exists(tif_mask_path)) { try({ file.remove(tif_mask_path) }, silent = TRUE) }
+    if (file.exists(tif_mask_path)) {
+      try(
+        {
+          file.remove(tif_mask_path)
+        },
+        silent = TRUE
+      )
+    }
     raster::writeRaster(pred_r_river, tif_mask_path, overwrite = TRUE)
 
-    vals <- raster::getValues(pred_r_river); vals <- vals[!is.na(vals)]
+    vals <- raster::getValues(pred_r_river)
+    vals <- vals[!is.na(vals)]
     if (length(vals) > 0) {
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
         scenario = ssp, model = mn, n_pixels_river = length(vals),
@@ -303,14 +348,14 @@ for (ssp in names(future_bioc_list)) {
     }
 
     out_base <- file.path(out_dir_fig, paste0("prediction_", tolower(mn), "_causal_19plus4"))
-    pred_r_river_thick <- viz_thicken_river_raster(pred_r_river, w_size = 3)
+    # pred_r_river_thick <- viz_thicken_river_raster(pred_r_river, w_size = 3) # Removed
     viz_save_raster_map(
-      r = pred_r_river_thick, out_base = out_base,
+      r = pred_r_river, out_base = out_base,
       title = paste0(ssp, " - ", mn, " (causal 19+4 subset)"),
       palette = "magma", q_limits = c(0.01, 0.99),
       china_path = "earthenvstreams_china/china_boundary.shp",
-      width_in = 8, height_in = 6,
-      hydrorivers_sf = hydro_ord2_6
+      width_in = 8, height_in = 6
+      # hydrorivers_sf = hydro_ord2_6 # Removed
     )
   }
 

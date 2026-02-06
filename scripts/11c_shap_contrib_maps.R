@@ -16,11 +16,11 @@
 # 初始化
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 packages <- c("tidyverse", "raster", "fastshap", "nnet", "randomForest", "maxnet", "mgcv", "sf", "rnaturalearth", "viridis", "sysfonts", "showtext", "terra", "svglite", "ggplot2")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
@@ -29,17 +29,20 @@ for(pkg in packages) {
 dir.create("output/11_prediction_maps/rasters", showWarnings = FALSE, recursive = TRUE)
 
 # 字体与制图
-try({
-  sysfonts::font_add(
-    family = "Arial",
-    regular = "C:/Windows/Fonts/arial.ttf",
-    bold = "C:/Windows/Fonts/arialbd.ttf",
-    italic = "C:/Windows/Fonts/ariali.ttf",
-    bolditalic = "C:/Windows/Fonts/arialbi.ttf"
-  )
-  showtext::showtext_opts(dpi = 2400)
-  showtext::showtext_auto(enable = TRUE)
-}, silent = TRUE)
+try(
+  {
+    sysfonts::font_add(
+      family = "Arial",
+      regular = "C:/Windows/Fonts/arial.ttf",
+      bold = "C:/Windows/Fonts/arialbd.ttf",
+      italic = "C:/Windows/Fonts/ariali.ttf",
+      bolditalic = "C:/Windows/Fonts/arialbi.ttf"
+    )
+    showtext::showtext_opts(dpi = 2400)
+    showtext::showtext_auto(enable = TRUE)
+  },
+  silent = TRUE
+)
 
 # 统一绘图工具（Nature风格/PNG+SVG/Arial）
 source("scripts/visualization/viz_utils.R")
@@ -56,7 +59,7 @@ var_map <- var_map[var_map$variable %in% sel_vars, c("variable", "file", "band")
 build_env_stack <- function(var_map_df, base_dir = "earthenvstreams_china") {
   groups <- split(var_map_df, var_map_df$file)
   stk_list <- list()
-  for(fn in names(groups)) {
+  for (fn in names(groups)) {
     g <- groups[[fn]]
     r <- raster::brick(file.path(base_dir, fn))
     r_sel <- r[[g$band]]
@@ -73,13 +76,16 @@ build_env_stack <- function(var_map_df, base_dir = "earthenvstreams_china") {
 env_stack <- build_env_stack(var_map)
 
 # 若后续模型（如GAM）包含 s(lon,lat)，需要在环境栅格中加入经纬度图层
-lon_r <- raster::init(env_stack[[1]], fun = 'x') ; names(lon_r) <- 'lon'
-lat_r <- raster::init(env_stack[[1]], fun = 'y') ; names(lat_r) <- 'lat'
+lon_r <- raster::init(env_stack[[1]], fun = "x")
+names(lon_r) <- "lon"
+lat_r <- raster::init(env_stack[[1]], fun = "y")
+names(lat_r) <- "lat"
 env_stack <- raster::addLayer(env_stack, lon_r, lat_r)
 
 # 河网掩膜
 fa <- raster::brick("earthenvstreams_china/flow_acc.tif")[[2]]
-fa_vals <- raster::getValues(fa) ; fa_vals[fa_vals <= 0] <- NA
+fa_vals <- raster::getValues(fa)
+fa_vals[fa_vals <= 0] <- NA
 river_mask <- raster::setValues(fa, fa_vals)
 rm(fa_vals)
 
@@ -95,18 +101,27 @@ model_paths <- c(
 )
 
 make_pred_fun <- function(model_name, model_obj) {
-  if(model_name == "Maxnet") {
-    return(function(object, newdata) { as.numeric(predict(object, newdata, type = "logistic")) })
-  }
-  if(model_name == "RF") {
-    return(function(object, newdata) { as.numeric(predict(object, newdata = newdata, type = "prob")[, "1"]) })
-  }
-  if(model_name == "GAM") {
-    return(function(object, newdata) { as.numeric(predict(object, newdata = newdata, type = "response")) })
-  }
-  if(model_name == "NN") {
+  if (model_name == "Maxnet") {
     return(function(object, newdata) {
-      mu <- object$mean; sdv <- object$sd; mod <- object$model; vars <- object$vars
+      as.numeric(predict(object, newdata, type = "logistic"))
+    })
+  }
+  if (model_name == "RF") {
+    return(function(object, newdata) {
+      as.numeric(predict(object, newdata = newdata, type = "prob")[, "1"])
+    })
+  }
+  if (model_name == "GAM") {
+    return(function(object, newdata) {
+      as.numeric(predict(object, newdata = newdata, type = "response"))
+    })
+  }
+  if (model_name == "NN") {
+    return(function(object, newdata) {
+      mu <- object$mean
+      sdv <- object$sd
+      mod <- object$model
+      vars <- object$vars
       sdv[sdv == 0 | is.na(sdv)] <- 1
       x <- as.matrix(newdata[, vars, drop = FALSE])
       x <- sweep(x, 2, mu[vars], "-")
@@ -117,11 +132,11 @@ make_pred_fun <- function(model_name, model_obj) {
 }
 
 available_models <- names(model_paths)[file.exists(model_paths)]
-if(length(available_models) == 0) stop("未发现已训练模型，无法计算SHAP贡献图")
+if (length(available_models) == 0) stop("未发现已训练模型，无法计算SHAP贡献图")
 
 # 从变量重要性中选取Top变量，控制图件数量
 imp_path <- "output/09_variable_importance/importance_summary.csv"
-if(file.exists(imp_path)) {
+if (file.exists(imp_path)) {
   imp_df <- read.csv(imp_path)
   top_vars <- imp_df %>%
     dplyr::group_by(variable) %>%
@@ -129,7 +144,7 @@ if(file.exists(imp_path)) {
     dplyr::arrange(dplyr::desc(mean_imp)) %>%
     dplyr::pull(variable)
   top_vars <- intersect(top_vars, sel_vars)
-  if(length(top_vars) > 12) top_vars <- top_vars[1:12]
+  if (length(top_vars) > 12) top_vars <- top_vars[1:12]
 } else {
   top_vars <- sel_vars[seq_len(min(12, length(sel_vars)))]
 }
@@ -138,26 +153,51 @@ if(file.exists(imp_path)) {
 bs <- raster::blockSize(env_stack)
 summary_rows <- list()
 
-for(mn in available_models) {
+for (mn in available_models) {
   cat("模型 ", mn, " 的 SHAP 空间映射...\n", sep = "")
   mdl <- readRDS(model_paths[[mn]])
   pred_fun <- make_pred_fun(mn, mdl)
 
+  # ---------------------------------------------------------
+  # 优化：生成全局背景数据集 (Background Data) 用于 SHAP 计算
+  # ---------------------------------------------------------
+  # 避免在每个块中使用块本身作为背景（速度极慢且不稳定）。
+  # 随机采样 200 个点作为参考分布。
+  set.seed(123)
+  bg_idx <- sample(raster::ncell(env_stack), 200)
+  X_bg <- as.data.frame(raster::extract(env_stack, bg_idx))
+  # 移除包含 NA 的背景样本
+  X_bg <- X_bg[stats::complete.cases(X_bg), ]
+  if (nrow(X_bg) < 50) {
+    warning("背景样本过少，尝试增加采样...")
+    bg_idx <- sample(raster::ncell(env_stack), 1000)
+    X_bg <- as.data.frame(raster::extract(env_stack, bg_idx))
+    X_bg <- X_bg[stats::complete.cases(X_bg), ]
+  }
+  cat("  - SHAP 背景数据集大小: ", nrow(X_bg), "\n")
+
   # 注意：fastshap::explain 需要一批样本；这里对每个块内像元使用 X_block 直接求SHAP
   # 计算成本高：可适当减少 nsim 或 top_vars 数量
-  for(v in top_vars) {
+  for (v in top_vars) {
     cat("  - 变量 ", v, " ...\n", sep = "")
     out_path <- file.path("output/11_prediction_maps/rasters", paste0("shap_", tolower(mn), "_", gsub("[^A-Za-z0-9_]+", "_", v), ".tif"))
-    if(file.exists(out_path)) { try({ file.remove(out_path) }, silent = TRUE) }
+    if (file.exists(out_path)) {
+      try(
+        {
+          file.remove(out_path)
+        },
+        silent = TRUE
+      )
+    }
     out_r <- raster::raster(env_stack, layer = 1)
     out_r <- raster::setValues(out_r, NA_real_)
 
     wr <- raster::writeStart(out_r, filename = out_path, overwrite = TRUE)
 
-    for(i in seq_len(bs$n)) {
+    for (i in seq_len(bs$n)) {
       X_block <- raster::getValues(env_stack, row = bs$row[i], nrows = bs$nrows[i])
       X_df <- as.data.frame(X_block)
-      if(nrow(X_df) == 0) {
+      if (nrow(X_df) == 0) {
         wr <- raster::writeValues(wr, rep(NA_real_, 0), bs$row[i])
         next
       }
@@ -165,36 +205,44 @@ for(mn in available_models) {
       na_rows <- !stats::complete.cases(X_df)
       X_ok <- X_df[!na_rows, , drop = FALSE]
 
-      if(nrow(X_ok) > 0) {
+      if (nrow(X_ok) > 0) {
         # fastshap 仅对使用到的变量计算；确保变量集合对齐
-        vars <- if(mn == "NN") mdl$vars else sel_vars
+        vars <- if (mn == "NN") mdl$vars else sel_vars
         vars <- intersect(vars, colnames(X_ok))
-        # 若为GAM，预测需要 lon/lat；将其并入 X_used，但 feature_names 仍仅对 vars 求SHAP
-        if(mn == "GAM") {
-          extra_xy <- intersect(c("lon","lat"), colnames(X_ok))
+
+        # 准备背景数据 (X_bg_used) 和 待解释数据 (X_new_used)
+        # 若为GAM，预测需要 lon/lat；将其并入，但 feature_names 仍仅对 vars 求SHAP
+        if (mn == "GAM") {
+          extra_xy <- intersect(c("lon", "lat"), colnames(X_ok))
           union_vars <- unique(c(vars, extra_xy))
-          X_used <- X_ok[, union_vars, drop = FALSE]
+          X_bg_used <- X_bg[, union_vars, drop = FALSE]
+          X_new_used <- X_ok[, union_vars, drop = FALSE]
         } else {
-          X_used <- X_ok[, vars, drop = FALSE]
+          X_bg_used <- X_bg[, vars, drop = FALSE]
+          X_new_used <- X_ok[, vars, drop = FALSE]
         }
 
-        shap_mat <- try({
-          fastshap::explain(
-            object = mdl,
-            X = X_used,
-            pred_wrapper = pred_fun,
-            feature_names = vars,
-            nsim = 32,
-            adjust = TRUE
-          )
-        }, silent = TRUE)
+        shap_mat <- try(
+          {
+            fastshap::explain(
+              object = mdl,
+              X = X_bg_used, # 背景数据集 (Reference)
+              newdata = X_new_used, # 待解释数据 (Target)
+              pred_wrapper = pred_fun,
+              feature_names = vars,
+              nsim = 10, # 降低 nsim 以提高速度 (地图绘制通常足够)
+              adjust = TRUE
+            )
+          },
+          silent = TRUE
+        )
 
-        if(inherits(shap_mat, "try-error")) {
+        if (inherits(shap_mat, "try-error")) {
           vec <- rep(NA_real_, nrow(X_df))
         } else {
           shap_df <- as.data.frame(shap_mat)
           vec <- rep(NA_real_, nrow(X_df))
-          if(v %in% colnames(shap_df)) {
+          if (v %in% colnames(shap_df)) {
             vec[!na_rows] <- shap_df[[v]]
           }
         }
@@ -213,7 +261,7 @@ for(mn in available_models) {
     # 统计摘要
     vals <- raster::getValues(out_riv)
     vals <- vals[is.finite(vals)]
-    if(length(vals) > 0) {
+    if (length(vals) > 0) {
       summary_rows[[length(summary_rows) + 1]] <- data.frame(
         model = mn, variable = v,
         n_pixels_river = length(vals),
@@ -232,18 +280,18 @@ for(mn in available_models) {
 
     # 统一出图风格（PNG+SVG）
     out_base <- file.path("figures/11_prediction_maps", paste0("shap_", tolower(mn), "_", gsub("[^A-Za-z0-9_]+", "_", v)))
-    viz_save_raster_map(r = out_riv, out_base = out_base,
-                        title = paste("Local SHAP:", mn, "-", v),
-                        palette = "magma", q_limits = c(0.01, 0.99),
-                        china_path = "earthenvstreams_china/china_boundary.shp",
-                        width_in = 8, height_in = 6)
-
-    
+    viz_save_raster_map(
+      r = out_riv, out_base = out_base,
+      title = paste("Local SHAP:", mn, "-", v),
+      palette = "magma", q_limits = c(0.01, 0.99),
+      china_path = "earthenvstreams_china/china_boundary.shp",
+      width_in = 8, height_in = 6
+    )
   }
 }
 
 # 汇总表
-if(length(summary_rows) > 0) {
+if (length(summary_rows) > 0) {
   shap_sum <- dplyr::bind_rows(summary_rows)
   write.csv(shap_sum, "output/11_prediction_maps/shap_maps_summary.csv", row.names = FALSE)
 }

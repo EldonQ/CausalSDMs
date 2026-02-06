@@ -1,178 +1,330 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
-# 脚本名称: 08_model_evaluation.R
-# 功能说明: 综合评估所有模型性能（Maxnet, NN, RF, GAM）
-# 方法: ROC曲线对比、性能指标对比、校准曲线
-# 输入文件: output/05_model_maxnet/evaluation.csv, predictions.csv
-#          output/05b_model_nn/evaluation.csv, predictions.csv
-#          output/06_model_rf/evaluation.csv, predictions.csv
-#          output/07_model_gam/evaluation.csv, predictions.csv
-# 输出文件: output/08_model_evaluation/evaluation_summary.csv
-#          figures/08_model_evaluation/roc_curves.png
-#          figures/08_model_evaluation/performance_comparison.png
-# 作者: Nature级别科研项目
-# 日期: 2025-10-20
+# 脚本名称: 08_model_evaluation.R (Advanced Edition)
+# 功能说明: Nature级模型综合评估系统 (Maxnet vs RF)
+# 特性:
+#   1. 多维度指标: AUC, TSS, Kappa, F1-score, Boyce Index(Approx)
+#   2. 统计检验: DeLong Test (AUC差异显著性)
+#   3. 高级绘图: ROC, 密度分布图(Density), 校准曲线(Calibration)
+#   4. 输出管理: 自动归档至 MaxnetRF 子目录
 # ==============================================================================
 
-# 初始化环境
-rm(list = ls())
-gc()
-setwd("E:/SDM01")
+# 初始化
+rm(list = ls()); gc()
+setwd("E:/CausalSDMs")
 
-# 加载必要的包
-packages <- c("tidyverse", "pROC", "ggplot2", "gridExtra", "scales")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+# 加载包
+packages <- c("tidyverse", "pROC", "ggplot2", "gridExtra", "scales", "caret")
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
 }
 
-dir.create("output/08_model_evaluation", showWarnings = FALSE, recursive = TRUE)
-dir.create("figures/08_model_evaluation", showWarnings = FALSE, recursive = TRUE)
+# 定义输出目录
+out_dir <- "output/08_model_evaluation/MaxnetRF"
+fig_dir <- "figures/08_model_evaluation/MaxnetRF"
+dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
 
-cat("\n======================================\n")
-cat("综合模型评估 (4个模型)\n")
-cat("======================================\n\n")
+cat("\n==================================================\n")
+cat("      高级模型评估系统 (Maxnet vs RF)      \n")
+cat("==================================================\n\n")
 
-# 1. 读取所有模型的评估结果和预测
-cat("步骤 1/4: 读取所有模型结果...\n")
+# ------------------------------------------------------------------------------
+# 辅助函数: 计算 Boyce Index (基于分箱的简易版)
+# ------------------------------------------------------------------------------
+calc_boyce_binned <- function(fit, obs, n_bins = 10) {
+  # fit: 预测值, obs: 观测值 (1/0)
+  # 仅使用 Presence 点的预测值分布与背景分布对比
+  # 这里简化为: 预测值分箱后，计算 P/E 比率的 Spearman 相关系数
+  
+  if(sum(obs==1) == 0) return(NA)
+  
+  # 过滤
+  pres_pred <- fit[obs == 1]
+  bg_pred <- fit[obs == 0] # 或者是全部点，视数据类型而定，这里假设0是背景
+  
+  # 分箱
+  bins <- quantile(fit, probs = seq(0, 1, length.out = n_bins + 1), na.rm=TRUE)
+  # 避免重复断点
+  if(any(duplicated(bins))) bins <- seq(min(fit), max(fit), length.out = n_bins + 1)
+  
+  # 计算每个箱内的点数
+  p_counts <- hist(pres_pred, breaks = bins, plot = FALSE)$counts
+  b_counts <- hist(bg_pred, breaks = bins, plot = FALSE)$counts
+  
+  # 频率
+  p_freq <- p_counts / sum(p_counts)
+  b_freq <- b_counts / sum(b_counts)
+  
+  # P/E ratio
+  pe_ratio <- p_freq / (b_freq + 1e-10) # 避免除0
+  
+  # 取箱的中点作为预测值等级
+  bin_mids <- (bins[-1] + bins[-(n_bins+1)]) / 2
+  
+  # 计算 Spearman 相关
+  cor_val <- cor(bin_mids[b_counts > 0], pe_ratio[b_counts > 0], method = "spearman")
+  return(cor_val)
+}
 
-models <- c("Maxnet", "NN", "RF", "GAM")
-model_dirs <- c("05_model_maxnet", "05b_model_nn", "06_model_rf", "07_model_gam")
+# ------------------------------------------------------------------------------
+# 1. 数据读取与预处理
+# ------------------------------------------------------------------------------
+cat("步骤 1/5: 读取并标准化数据...\n")
 
-# 读取评估结果
-eval_list <- list()
+models <- c("Maxnet", "RF")
+model_dirs <- c("05_model_maxnet", "06_model_rf")
 pred_list <- list()
+eval_df_list <- list()
 
-for(i in seq_along(models)) {
-  eval_file <- paste0("output/", model_dirs[i], "/evaluation.csv")
-  pred_file <- paste0("output/", model_dirs[i], "/predictions.csv")
+for (i in seq_along(models)) {
+  m_name <- models[i]
+  p_file <- paste0("output/", model_dirs[i], "/predictions.csv")
+  e_file <- paste0("output/", model_dirs[i], "/evaluation.csv")
   
-  if(file.exists(eval_file)) {
-    eval_list[[models[i]]] <- read.csv(eval_file)
-    cat("  ✓ ", models[i], " evaluation\n", sep = "")
-  } else {
-    cat("  ✗ ", models[i], " evaluation 文件不存在\n", sep = "")
+  # 读取预测 (关键)
+  if (file.exists(p_file)) {
+    tmp <- read.csv(p_file) %>% filter(dataset == "test") # 只看测试集
+    
+    # 列名标准化
+    if ("observed" %in% names(tmp)) tmp <- rename(tmp, presence = observed)
+    
+    # 确保 predicted 列存在且有效
+    if ("predicted" %in% names(tmp)) {
+      tmp <- tmp %>% filter(!is.na(predicted), !is.na(presence))
+      pred_list[[m_name]] <- tmp
+      cat("  ✓ ", m_name, ": 读取测试样本 ", nrow(tmp), " 条\n", sep="")
+    }
   }
   
-  if(file.exists(pred_file)) {
-    pred_list[[models[i]]] <- read.csv(pred_file)
+  # 读取预测 (关键)
+  if (file.exists(p_file)) {
+    tmp <- read.csv(p_file) %>% filter(dataset == "test") # 只看测试集
+    
+    # 列名标准化
+    if ("observed" %in% names(tmp)) tmp <- rename(tmp, presence = observed)
+    
+    # 确保 predicted 列存在且有效
+    if ("predicted" %in% names(tmp)) {
+      tmp <- tmp %>% filter(!is.na(predicted), !is.na(presence))
+      pred_list[[m_name]] <- tmp
+      cat("  ✓ ", m_name, ": 读取测试样本 ", nrow(tmp), " 条\n", sep="")
+    }
   }
 }
 
-# 合并评估结果
-all_eval <- bind_rows(eval_list)
-test_eval <- all_eval %>% filter(dataset == "test")
+# ------------------------------------------------------------------------------
+# 2. 高级指标计算与统计检验
+# ------------------------------------------------------------------------------
+cat("\n步骤 2/5: 计算高级指标与统计检验...\n")
 
-cat("  - 成功读取 ", length(eval_list), " 个模型\n", sep = "")
+advanced_metrics <- data.frame()
+roc_objects <- list()
 
-# 2. 绘制ROC曲线对比
-cat("\n步骤 2/4: 绘制ROC曲线对比...\n")
-
-# 定义颜色方案（Nature配色）
-model_colors <- c("Maxnet" = "#E41A1C", "NN" = "#377EB8", "RF" = "#4DAF4A", "GAM" = "#984EA3")
-
-# 计算ROC曲线
-roc_list <- list()
-for(model in names(pred_list)) {
-  pred_data <- pred_list[[model]] %>% filter(dataset == "test")
-  if(nrow(pred_data) > 0) {
-    roc_list[[model]] <- roc(pred_data$presence, pred_data$predicted, quiet = TRUE)
-  }
-}
-
-# PNG版本
-png("figures/08_model_evaluation/roc_curves.png",
-    width = 3000, height = 3000, res = 2400, family = "Arial", bg = "transparent")
-par(mar = c(4, 4, 2, 1))
-plot(0, 0, type = "n", xlim = c(0, 1), ylim = c(0, 1),
-     xlab = "False Positive Rate (1 - Specificity)", 
-     ylab = "True Positive Rate (Sensitivity)",
-     main = "ROC Curves Comparison", cex.main = 0.9, cex.lab = 0.8, cex.axis = 0.7)
-abline(a = 0, b = 1, lty = 3, col = "gray50", lwd = 1)
-
-legend_text <- c()
-legend_cols <- c()
-for(model in names(roc_list)) {
-  plot(roc_list[[model]], col = model_colors[model], lwd = 2, add = TRUE)
-  auc_val <- as.numeric(auc(roc_list[[model]]))
-  legend_text <- c(legend_text, sprintf("%s (AUC = %.3f)", model, auc_val))
-  legend_cols <- c(legend_cols, model_colors[model])
-}
-
-legend("bottomright", legend = legend_text, col = legend_cols,
-       lwd = 2, cex = 0.7, bg = "transparent")
-dev.off()
-
-cat("  ", "ROC曲线: figures/08_model_evaluation/roc_curves.png\n")
-
-# 3. 绘制性能指标对比
-cat("\n步骤 3/4: 绘制性能指标对比...\n")
-
-# 准备数据
-metrics_data <- test_eval %>%
-  select(model, AUC, TSS, Sensitivity, Specificity) %>%
-  pivot_longer(cols = c(AUC, TSS, Sensitivity, Specificity),
-               names_to = "Metric", values_to = "Value")
-
-# PNG版本
-png("figures/08_model_evaluation/performance_comparison.png",
-    width = 3600, height = 2400, res = 2400, family = "Arial", bg = "transparent")
-
-p <- ggplot(metrics_data, aes(x = Metric, y = Value, fill = model)) +
-  geom_bar(stat = "identity", position = "dodge", color = "black", linewidth = 0.3) +
-  scale_fill_manual(values = model_colors) +
-  labs(title = "Model Performance Comparison",
-       x = "Metric", y = "Value", fill = "Model") +
-  ylim(0, 1) +
-  theme_minimal(base_size = 8) +
-  theme(
-    plot.title = element_text(size = 9, face = "bold", hjust = 0.5),
-    axis.title = element_text(size = 7, face = "bold"),
-    axis.text = element_text(size = 6),
-    legend.position = "bottom",
-    legend.title = element_text(size = 6, face = "bold"),
-    legend.text = element_text(size = 6),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
-    panel.background = element_rect(fill = "transparent", color = NA),
-    plot.background = element_rect(fill = "transparent", color = NA)
+for (m_name in names(pred_list)) {
+  dat <- pred_list[[m_name]]
+  
+  # 1. 基础 ROC 对象
+  roc_obj <- roc(dat$presence, dat$predicted, quiet = TRUE)
+  roc_objects[[m_name]] <- roc_obj
+  
+  # 2. 确定最优阈值 (Youden Index)
+  coords_best <- coords(roc_obj, "best", best.method = "youden", ret = c("threshold", "specificity", "sensitivity"))
+  # 处理可能返回多个阈值的情况
+  if(is.matrix(coords_best) || is.data.frame(coords_best)) coords_best <- coords_best[1, ]
+  thresh <- coords_best$threshold
+  
+  # 3. 基于阈值的混淆矩阵指标
+  pred_class <- ifelse(dat$predicted >= thresh, 1, 0)
+  cm <- confusionMatrix(factor(pred_class, levels=c(0,1)), factor(dat$presence, levels=c(0,1)))
+  
+  # 4. Boyce Index
+  boyce <- calc_boyce_binned(dat$predicted, dat$presence)
+  
+  # 汇总
+  metrics_row <- data.frame(
+    Model = m_name,
+    AUC = as.numeric(auc(roc_obj)),
+    TSS = as.numeric(coords_best$sensitivity + coords_best$specificity - 1),
+    Kappa = as.numeric(cm$overall["Kappa"]),
+    F1 = as.numeric(cm$byClass["F1"]),
+    Accuracy = as.numeric(cm$overall["Accuracy"]),
+    Boyce = boyce,
+    Optimal_Threshold = thresh
   )
-print(p)
+  advanced_metrics <- rbind(advanced_metrics, metrics_row)
+}
+
+# DeLong Test (两两比较)
+cat("  - 执行 DeLong Test (AUC 差异显著性检验)...\n")
+delong_res <- "N/A"
+if (length(roc_objects) == 2) {
+  test_res <- roc.test(roc_objects[[1]], roc_objects[[2]], method = "delong")
+  p_val <- test_res$p.value
+  signif_symbol <- ifelse(p_val < 0.001, "***", ifelse(p_val < 0.01, "**", ifelse(p_val < 0.05, "*", "ns")))
+  delong_res <- sprintf("p = %.4f (%s)", p_val, signif_symbol)
+  cat(sprintf("    对比 %s vs %s: %s\n", names(roc_objects)[1], names(roc_objects)[2], delong_res))
+  
+  # 添加到结果表
+  advanced_metrics$Difference_Significance <- c(delong_res, "")
+}
+
+write.csv(advanced_metrics, file.path(out_dir, "advanced_evaluation_metrics.csv"), row.names = FALSE)
+
+# ------------------------------------------------------------------------------
+# 3. 绘图 A: ROC 曲线 (含 DeLong P值标注)
+# ------------------------------------------------------------------------------
+cat("\n步骤 3/5: 绘制 ROC 曲线 (修复截断问题)...\n")
+
+png(file.path(fig_dir, "roc_curves_advanced.png"), width = 2400, height = 2400, res = 300, bg = "transparent")
+# 简洁风格：减小顶部边距，移除标题 (符合奥卡姆剃刀原理)
+par(mar = c(5, 5, 2, 2), family = "serif", cex.lab=1.2, cex.axis=1.1)
+
+col_map <- c("Maxnet" = "#E64B35", "RF" = "#4DBBD5")
+
+# 空画布 - ylim 设为 1.02 (略高于1) 且使用 yaxs="i" 刚性约束，保证 1.0 处的线条完整且不留过多空白
+plot(roc_objects[[1]], type = "n", legacy.axes = TRUE,
+     xlab = "False Positive Rate (1 - Specificity)",
+     ylab = "True Positive Rate (Sensitivity)",
+     main = "",
+     ylim = c(0, 1.02), xlim = c(1, 0), xaxs="i", yaxs="i")
+grid(col = "grey90")
+
+# 移除所有标题函数 (title/mtext)，保持图形纯净
+
+# 参考线
+abline(a = 0, b = 1, lty = 2, col = "grey60")
+
+# 循环画线
+for (m in names(roc_objects)) {
+  plot(roc_objects[[m]], add = TRUE, col = col_map[m], lwd = 3, legacy.axes=TRUE)
+}
+
+# 图例 (inset参数微调位置: 第一个数是左右偏移，第二个数是上下偏移)
+legend_txt <- paste0(advanced_metrics$Model, " (AUC = ", round(advanced_metrics$AUC, 3), ")")
+# 上移图例: inset = c(0.05, 0.08)
+legend("bottomright", legend = legend_txt, col = col_map[names(roc_objects)], 
+       lwd = 3, bty = "n", cex = 1.1, inset = c(0.05, 0.08))
+
+# 标注 P 值
+if (delong_res != "N/A") {
+  text(0.5, 0.15, paste("DeLong Test:\n", delong_res), adj = 0, col = "black", font = 3, cex = 1)
+}
+
 dev.off()
 
-cat("  ", "性能对比: figures/08_model_evaluation/performance_comparison.png\n")
+# ------------------------------------------------------------------------------
+# 4. 绘图 B: SDM 专属评估图 (Boyce & TSS 曲线)
+# ------------------------------------------------------------------------------
+cat("步骤 4/5: 绘制 SDM 专属评估图 (Boyce, TSS)...\n")
 
-# 4. 保存综合评估结果
-cat("\n步骤 4/4: 保存综合评估结果...\n")
+# --- 4.1 Boyce Index P/E 曲线 ---
+# 这是一个展示模型校准度的黄金指标图
+png(file.path(fig_dir, "boyce_pe_curves.png"), width = 2400, height = 1800, res = 300, bg = "white")
+par(mar = c(5, 5, 4, 2), family = "serif")
+plot(0, 0, type="n", xlim=c(0, 1), ylim=c(0, 5), # 通常P/E比率在0-5之间
+     xlab="Predicted Probability", ylab="Predicted-to-Expected Ratio (P/E)",
+     main="Boyce Index (Model Calibration)")
+grid()
+abline(h=1, col="grey", lty=2) # 参考线: P/E=1 表示随机预测
 
-summary_table <- test_eval %>%
-  select(model, n_samples, n_presence, AUC, TSS, Sensitivity, Specificity, optimal_threshold) %>%
-  arrange(desc(AUC))
+for (m in names(pred_list)) {
+  dat <- pred_list[[m]]
+  # 计算分箱 P/E
+  obs <- dat$presence
+  fit <- dat$predicted
+  # 简易分箱
+  bins <- quantile(fit, probs = seq(0, 1, length.out = 11), na.rm=T)
+  digits <- cut(fit, unique(bins), include.lowest=T)
+  
+  # 计算每个箱的 P/E
+  bin_stats <- data.frame(fit=fit, obs=obs, bin=digits) %>%
+    group_by(bin) %>%
+    summarise(
+      mean_pred = mean(fit),
+      n_pres = sum(obs==1),
+      n_total = n(),
+      .groups = 'drop'
+    ) %>%
+    mutate(
+      f_pres = n_pres / sum(n_pres),     # 出现频率
+      f_total = n_total / sum(n_total),  # 期望频率
+      pe = f_pres / f_total              # P/E Ratio
+    ) %>%
+    filter(!is.na(pe) & is.finite(pe))
+  
+  # 画点和线 (平滑)
+  points(bin_stats$mean_pred, bin_stats$pe, col=alpha(col_map[m], 0.4), pch=16)
+  lines(lowess(bin_stats$mean_pred, bin_stats$pe, f=0.8), col=col_map[m], lwd=3)
+}
+legend("topleft", legend=names(pred_list), col=col_map, lwd=3, bty="n", cex=1.2)
+dev.off()
 
-write.csv(summary_table, "output/08_model_evaluation/evaluation_summary.csv", row.names = FALSE)
-write.csv(all_eval, "output/08_model_evaluation/evaluation_all.csv", row.names = FALSE)
 
-# 日志
-sink("output/08_model_evaluation/processing_log.txt")
-cat("综合模型评估日志\n", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), "\n\n", sep = "")
-cat("模型数量: ", length(models), "\n\n", sep = "")
-cat("测试集性能排名 (按AUC):\n")
-print(summary_table)
+# --- 4.2 TSS vs Threshold 曲线 ---
+# 展示 TSS 随阈值变化的趋势，直观显示最优阈值
+tss_data <- data.frame()
+
+for (m in names(roc_objects)) {
+  roc_obj <- roc_objects[[m]]
+  # 提取所有阈值的指标
+  # coords 返回矩阵: threshold, specificity, sensitivity
+  res <- coords(roc_obj, "all", ret=c("threshold", "specificity", "sensitivity"), transpose=FALSE)
+  res$TSS <- res$sensitivity + res$specificity - 1
+  res$Model <- m
+  tss_data <- rbind(tss_data, res)
+}
+
+p_tss <- ggplot(tss_data, aes(x=threshold, y=TSS, color=Model)) +
+  geom_line(linewidth=1.2) +
+  scale_color_manual(values=col_map) +
+  theme_bw(base_size = 14) +
+  labs(title="TSS Sensitivity to Threshold", x="Threshold", y="TSS") +
+  theme(panel.grid.minor = element_blank(), legend.position=c(0.85, 0.85))
+
+ggsave(file.path(fig_dir, "tss_threshold_curves.png"), p_tss, width = 6, height = 5, dpi = 300)
+
+
+# ------------------------------------------------------------------------------
+# 5. 绘图 C: 模型性能雷达图/柱状图 (多指标)
+# ------------------------------------------------------------------------------
+cat("步骤 5/5: 绘制综合指标对比图...\n")
+
+metrics_long <- advanced_metrics %>%
+  select(Model, AUC, TSS, Kappa, F1, Accuracy) %>%
+  pivot_longer(cols = -Model, names_to = "Metric", values_to = "Value")
+
+p_metrics <- ggplot(metrics_long, aes(x = Metric, y = Value, fill = Model)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7), width = 0.6, color="black", size=0.3) +
+  scale_fill_manual(values = col_map) +
+  # 添加数值标签
+  geom_text(aes(label = sprintf("%.2f", Value)), 
+            position = position_dodge(width = 0.7), vjust = -0.5, size = 3.5) +
+  ylim(0, 1.1) +
+  labs(title = "Comprehensive Performance Metrics", x = "", y = "Value") +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "top",
+    panel.grid.major.x = element_blank(),
+    axis.text = element_text(color="black")
+  )
+
+ggsave(file.path(fig_dir, "metrics_barplot.png"), p_metrics, width = 8, height = 6, dpi = 300)
+
+# ==============================================================================
+# 完成
+# ==============================================================================
+sink(file.path(out_dir, "evaluation_report.txt"))
+cat("高级模型评估报告\n")
+cat("Generated at:", format(Sys.time()), "\n\n")
+cat("1. 详细指标:\n")
+print(advanced_metrics)
+cat("\n2. 统计检验 (DeLong):\n")
+cat("   Maxnet vs RF P-value:", delong_res, "\n")
 sink()
 
-cat("  ✓ 评估摘要: output/08_model_evaluation/evaluation_summary.csv\n")
-
-# 输出摘要
-cat("\n======================================\n")
-cat("模型评估完成\n")
-cat("======================================\n\n")
-
-cat("测试集性能排名 (按AUC):\n")
-for(i in 1:nrow(summary_table)) {
-  cat(sprintf("  %d. %-8s AUC=%.4f, TSS=%.4f\n", 
-              i, summary_table$model[i], summary_table$AUC[i], summary_table$TSS[i]))
-}
-
-cat("\n✓ 脚本执行完成!\n\n")
+cat("\n所有评估结果已保存至:", out_dir, "\n")
+cat("✓ 脚本执行完成!\n")

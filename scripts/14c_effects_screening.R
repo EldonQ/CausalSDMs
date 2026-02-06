@@ -14,16 +14,18 @@
 # 初始化环境
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 设定 CRAN 镜像
 options(repos = c(CRAN = "https://mirrors.sustech.edu.cn/CRAN/"))
 
 # 加载必要的包
-packages <- c("tidyverse", "DoubleML", "mlr3", "mlr3learners", "ranger", 
-              "ggplot2", "sysfonts", "showtext")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+packages <- c(
+  "tidyverse", "DoubleML", "mlr3", "mlr3learners", "ranger",
+  "ggplot2", "sysfonts", "showtext"
+)
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
@@ -33,17 +35,20 @@ dir.create("output/14_causal", showWarnings = FALSE, recursive = TRUE)
 dir.create("figures/14_causal", showWarnings = FALSE, recursive = TRUE)
 
 # 字体设置
-try({
-  sysfonts::font_add(
-    family = "Arial",
-    regular = "C:/Windows/Fonts/arial.ttf",
-    bold = "C:/Windows/Fonts/arialbd.ttf",
-    italic = "C:/Windows/Fonts/ariali.ttf",
-    bolditalic = "C:/Windows/Fonts/arialbi.ttf"
-  )
-  showtext::showtext_opts(dpi = 2400)
-  showtext::showtext_auto(enable = TRUE)
-}, silent = TRUE)
+try(
+  {
+    sysfonts::font_add(
+      family = "Arial",
+      regular = "C:/Windows/Fonts/arial.ttf",
+      bold = "C:/Windows/Fonts/arialbd.ttf",
+      italic = "C:/Windows/Fonts/ariali.ttf",
+      bolditalic = "C:/Windows/Fonts/arialbi.ttf"
+    )
+    showtext::showtext_opts(dpi = 2400)
+    showtext::showtext_auto(enable = TRUE)
+  },
+  silent = TRUE
+)
 
 cat("\n======================================\n")
 cat("批量ATE估计 (Top候选变量)\n")
@@ -61,9 +66,9 @@ env_vars <- setdiff(colnames(dat), exclude_cols)
 
 # 读取变量重要性，选择Top 20
 imp_path <- "output/09_variable_importance/importance_summary.csv"
-if(file.exists(imp_path)) {
+if (file.exists(imp_path)) {
   imp_df <- read.csv(imp_path, stringsAsFactors = FALSE)
-  candidate_vars <- imp_df %>% 
+  candidate_vars <- imp_df %>%
     group_by(variable) %>%
     summarise(mean_imp = mean(importance_normalized, na.rm = TRUE), .groups = "drop") %>%
     arrange(desc(mean_imp)) %>%
@@ -77,7 +82,7 @@ if(file.exists(imp_path)) {
 
 cat("  ✓ 候选变量数: ", length(candidate_vars), "\n")
 cat("  变量列表:\n")
-for(i in seq_along(candidate_vars)) {
+for (i in seq_along(candidate_vars)) {
   cat(sprintf("    %2d. %s\n", i, candidate_vars[i]))
 }
 
@@ -90,74 +95,76 @@ cat("  (这可能需要几分钟...)\n\n")
 y <- dat$presence
 ate_results <- list()
 
-for(i in seq_along(candidate_vars)) {
+for (i in seq_along(candidate_vars)) {
   treat_var <- candidate_vars[i]
   cat(sprintf("  [%2d/%2d] %s ... ", i, length(candidate_vars), treat_var))
-  
-  tryCatch({
-    # 准备处理变量（二值化：中位数阈值）
-    vx <- as.numeric(dat[[treat_var]])
-    vx[!is.finite(vx)] <- NA
-    thr <- median(vx, na.rm = TRUE)
-    T_var <- as.numeric(vx > thr)
-    
-    # 协变量（所有其他环境变量）
-    X <- dat[, setdiff(env_vars, treat_var), drop = FALSE]
-    X[is.na(X)] <- 0
-    
-    # 构建DoubleML数据
-    df <- data.frame(y = y, d = T_var, X)
-    task <- DoubleML::DoubleMLData$new(df, y_col = "y", d_cols = "d")
-    
-    # 机器学习模型（回归树 + 分类树）
-    ml_g <- mlr3::lrn("regr.ranger", num.trees = 300)
-    ml_m <- mlr3::lrn("classif.ranger", num.trees = 300, predict_type = "prob")
-    
-    # 拟合IRM
-    dml_irm <- DoubleML::DoubleMLIRM$new(task, ml_g = ml_g, ml_m = ml_m, n_folds = 3)
-    dml_irm$fit()
-    
-    # 提取结果
-    summ <- dml_irm$summary()
-    summ_df <- as.data.frame(summ)
-    
-    # 标准化列名（不同版本的DoubleML可能列名不同）
-    names(summ_df) <- tolower(gsub("[^a-z0-9]+", "_", names(summ_df)))
-    
-    # 识别系数和标准误列
-    coef_col <- which(names(summ_df) %in% c("coef", "estimate", "theta"))[1]
-    se_col <- which(names(summ_df) %in% c("std_error", "std_err", "se", "stderr"))[1]
-    pval_col <- which(names(summ_df) %in% c("p_value", "pval", "p_val"))[1]
-    
-    if(is.na(coef_col)) coef_col <- 1
-    if(is.na(se_col)) se_col <- 2
-    if(is.na(pval_col)) pval_col <- ncol(summ_df)
-    
-    ate_results[[treat_var]] <- data.frame(
-      variable = treat_var,
-      coef = as.numeric(summ_df[1, coef_col]),
-      std_error = as.numeric(summ_df[1, se_col]),
-      p_value = as.numeric(summ_df[1, pval_col]),
-      threshold = thr,
-      n_treated = sum(T_var == 1, na.rm = TRUE),
-      n_control = sum(T_var == 0, na.rm = TRUE)
-    )
-    
-    cat("✓\n")
-    
-  }, error = function(e) {
-    cat("✗ (", e$message, ")\n", sep = "")
-    ate_results[[treat_var]] <<- data.frame(
-      variable = treat_var,
-      coef = NA,
-      std_error = NA,
-      p_value = NA,
-      threshold = NA,
-      n_treated = NA,
-      n_control = NA
-    )
-  })
-  
+
+  tryCatch(
+    {
+      # 准备处理变量（二值化：中位数阈值）
+      vx <- as.numeric(dat[[treat_var]])
+      vx[!is.finite(vx)] <- NA
+      thr <- median(vx, na.rm = TRUE)
+      T_var <- as.numeric(vx > thr)
+
+      # 协变量（所有其他环境变量）
+      X <- dat[, setdiff(env_vars, treat_var), drop = FALSE]
+      X[is.na(X)] <- 0
+
+      # 构建DoubleML数据
+      df <- data.frame(y = y, d = T_var, X)
+      task <- DoubleML::DoubleMLData$new(df, y_col = "y", d_cols = "d")
+
+      # 机器学习模型（回归树 + 分类树）
+      ml_g <- mlr3::lrn("regr.ranger", num.trees = 300)
+      ml_m <- mlr3::lrn("classif.ranger", num.trees = 300, predict_type = "prob")
+
+      # 拟合IRM
+      dml_irm <- DoubleML::DoubleMLIRM$new(task, ml_g = ml_g, ml_m = ml_m, n_folds = 3)
+      dml_irm$fit()
+
+      # 提取结果
+      summ <- dml_irm$summary()
+      summ_df <- as.data.frame(summ)
+
+      # 标准化列名（不同版本的DoubleML可能列名不同）
+      names(summ_df) <- tolower(gsub("[^a-z0-9]+", "_", names(summ_df)))
+
+      # 识别系数和标准误列
+      coef_col <- which(names(summ_df) %in% c("coef", "estimate", "theta"))[1]
+      se_col <- which(names(summ_df) %in% c("std_error", "std_err", "se", "stderr"))[1]
+      pval_col <- which(names(summ_df) %in% c("p_value", "pval", "p_val"))[1]
+
+      if (is.na(coef_col)) coef_col <- 1
+      if (is.na(se_col)) se_col <- 2
+      if (is.na(pval_col)) pval_col <- ncol(summ_df)
+
+      ate_results[[treat_var]] <- data.frame(
+        variable = treat_var,
+        coef = as.numeric(summ_df[1, coef_col]),
+        std_error = as.numeric(summ_df[1, se_col]),
+        p_value = as.numeric(summ_df[1, pval_col]),
+        threshold = thr,
+        n_treated = sum(T_var == 1, na.rm = TRUE),
+        n_control = sum(T_var == 0, na.rm = TRUE)
+      )
+
+      cat("✓\n")
+    },
+    error = function(e) {
+      cat("✗ (", e$message, ")\n", sep = "")
+      ate_results[[treat_var]] <<- data.frame(
+        variable = treat_var,
+        coef = NA,
+        std_error = NA,
+        p_value = NA,
+        threshold = NA,
+        n_treated = NA,
+        n_control = NA
+      )
+    }
+  )
+
   # 清理内存
   gc(verbose = FALSE)
 }
@@ -188,24 +195,28 @@ cat("\n步骤 3/3: 生成森林图...\n")
 # 筛选有效结果（排除估计失败的）
 ate_valid <- ate_all %>% filter(!is.na(coef))
 
-if(nrow(ate_valid) > 0) {
+if (nrow(ate_valid) > 0) {
   # 排序并限制显示数量（Top 15）
   ate_plot <- ate_valid %>%
     arrange(desc(abs(coef))) %>%
     head(15) %>%
     mutate(variable = factor(variable, levels = rev(variable)))
-  
+
   p_forest <- ggplot(ate_plot, aes(x = coef, y = variable, color = significant)) +
     geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
     geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper), height = 0.3, linewidth = 0.5) +
     geom_point(size = 2.5) +
-    scale_color_manual(values = c("TRUE" = "#E41A1C", "FALSE" = "grey50"),
-                       labels = c("TRUE" = "p < 0.05", "FALSE" = "p ≥ 0.05"),
-                       name = "Significance") +
-    labs(title = "Average Treatment Effects (ATE) - Top 15 Variables",
-         subtitle = "Error bars: 95% confidence intervals",
-         x = "ATE Estimate", 
-         y = "Environmental Variable") +
+    scale_color_manual(
+      values = c("TRUE" = "#E41A1C", "FALSE" = "grey50"),
+      labels = c("TRUE" = "p < 0.05", "FALSE" = "p ≥ 0.05"),
+      name = "Significance"
+    ) +
+    labs(
+      title = "Average Treatment Effects (ATE) - Top 15 Variables",
+      subtitle = "Error bars: 95% confidence intervals",
+      x = "ATE Estimate",
+      y = "Environmental Variable"
+    ) +
     theme_minimal(base_family = "Arial", base_size = 8) +
     theme(
       panel.grid.major = element_blank(),
@@ -217,12 +228,14 @@ if(nrow(ate_valid) > 0) {
       plot.subtitle = element_text(size = 7, color = "grey40"),
       legend.position = "top"
     )
-  
-  ggsave("figures/14_causal/ate_all_variables_forest.png", 
-         plot = p_forest, width = 6, height = 5, dpi = 2400, bg = "transparent")
-  ggsave("figures/14_causal/ate_all_variables_forest.svg", 
-         plot = p_forest, width = 6, height = 5, bg = "transparent")
-  
+
+  ggsave("figures/14_causal/ate_all_variables_forest.png",
+    plot = p_forest, width = 6, height = 5, dpi = 600, bg = "transparent"
+  )
+  ggsave("figures/14_causal/ate_all_variables_forest.svg",
+    plot = p_forest, width = 6, height = 5, bg = "transparent"
+  )
+
   cat("  ✓ 森林图已保存\n")
 }
 
@@ -253,4 +266,3 @@ cat("  - output/14_causal/ate_all_variables.csv\n")
 cat("  - figures/14_causal/ate_all_variables_forest.png\n\n")
 
 cat("✓ 脚本执行完成!\n\n")
-

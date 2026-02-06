@@ -2,7 +2,7 @@
 # ==============================================================================
 # 脚本名称: 14a_causal_dag_professional.R
 # 功能说明: 专业绘制因果DAG网络图，优化布局与边权重可视化
-# 改进点: 
+# 改进点:
 #   1. 使用力导向布局避免节点重叠
 #   2. 边粗细映射稳定性权重
 #   3. 按变量类型分组着色
@@ -12,30 +12,35 @@
 
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 options(repos = c(CRAN = "https://mirrors.sustech.edu.cn/CRAN/"))
 
 # 加载包
-packages <- c("tidyverse", "igraph", "ggraph", "tidygraph", 
-              "ggrepel", "RColorBrewer", "sysfonts", "showtext")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+packages <- c(
+  "tidyverse", "igraph", "ggraph", "tidygraph",
+  "ggrepel", "RColorBrewer", "sysfonts", "showtext"
+)
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
 }
 
 # 字体设置
-try({
-  sysfonts::font_add(
-    family = "Arial",
-    regular = "C:/Windows/Fonts/arial.ttf",
-    bold = "C:/Windows/Fonts/arialbd.ttf"
-  )
-  showtext::showtext_opts(dpi = 2400)
-  showtext::showtext_auto(enable = TRUE)
-}, silent = TRUE)
+try(
+  {
+    sysfonts::font_add(
+      family = "Arial",
+      regular = "C:/Windows/Fonts/arial.ttf",
+      bold = "C:/Windows/Fonts/arialbd.ttf"
+    )
+    showtext::showtext_opts(dpi = 1200)
+    showtext::showtext_auto(enable = TRUE)
+  },
+  silent = TRUE
+)
 
 cat("\n======================================\n")
 cat("专业因果DAG网络图绘制\n")
@@ -53,25 +58,37 @@ variable_groups <- data.frame(
 
 all_vars <- unique(c(edges_data$from, edges_data$to))
 
-for(v in all_vars) {
-  if(grepl("^hydro_", v)) {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Hydroclimatic", stringsAsFactors = FALSE))
-  } else if(grepl("^(dem_|slope_|tpi_|tri_)", v)) {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Topographic", stringsAsFactors = FALSE))
-  } else if(grepl("^lc_", v)) {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Land cover", stringsAsFactors = FALSE))
-  } else if(grepl("^soil_", v)) {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Soil", stringsAsFactors = FALSE))
-  } else if(grepl("^flow_", v)) {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Hydrological", stringsAsFactors = FALSE))
+for (v in all_vars) {
+  if (grepl("^hydro_", v)) {
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Hydroclimatic", stringsAsFactors = FALSE)
+    )
+  } else if (grepl("^(dem_|slope_|tpi_|tri_)", v)) {
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Topographic", stringsAsFactors = FALSE)
+    )
+  } else if (grepl("^lc_", v)) {
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Land cover", stringsAsFactors = FALSE)
+    )
+  } else if (grepl("^soil_", v)) {
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Soil", stringsAsFactors = FALSE)
+    )
+  } else if (grepl("^flow_", v)) {
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Hydrological", stringsAsFactors = FALSE)
+    )
   } else {
-    variable_groups <- rbind(variable_groups, 
-                            data.frame(var = v, group = "Other", stringsAsFactors = FALSE))
+    variable_groups <- rbind(
+      variable_groups,
+      data.frame(var = v, group = "Other", stringsAsFactors = FALSE)
+    )
   }
 }
 
@@ -80,18 +97,18 @@ for(v in all_vars) {
 # ========================================
 cat("绘制图1: HC-DAG (strength ≥ 0.55)...\n")
 
-edges_strong <- edges_data %>% 
+edges_strong <- edges_data %>%
   filter(strength >= 0.55) %>%
   arrange(desc(strength))
 
-if(nrow(edges_strong) > 0) {
+if (nrow(edges_strong) > 0) {
   # 构建图对象
   g1 <- igraph::graph_from_data_frame(
-    d = edges_strong, 
-    directed = TRUE, 
+    d = edges_strong,
+    directed = TRUE,
     vertices = variable_groups
   )
-  
+
   # 转换为tidygraph对象
   tg1 <- tidygraph::as_tbl_graph(g1) %>%
     activate(nodes) %>%
@@ -101,7 +118,7 @@ if(nrow(edges_strong) > 0) {
     ) %>%
     activate(edges) %>%
     mutate(strength = strength)
-  
+
   # 配色方案
   group_colors <- c(
     "Hydroclimatic" = "#E41A1C",
@@ -111,7 +128,7 @@ if(nrow(edges_strong) > 0) {
     "Hydrological" = "#FF7F00",
     "Other" = "#999999"
   )
-  
+
   # 使用Fruchterman-Reingold力导向布局
   p1 <- ggraph(tg1, layout = "fr") +
     # 绘制边，宽度映射强度
@@ -172,7 +189,7 @@ if(nrow(edges_strong) > 0) {
       panel.background = element_rect(fill = "transparent", color = NA),
       plot.background = element_rect(fill = "transparent", color = NA)
     )
-  
+
   # 保存高分辨率图件
   ggsave(
     "figures/14_causal/dag_hc_professional_v2.png",
@@ -180,10 +197,10 @@ if(nrow(edges_strong) > 0) {
     width = 14,
     height = 10,
     units = "in",
-    dpi = 2400,
+    dpi = 1200,
     bg = "transparent"
   )
-  
+
   ggsave(
     "figures/14_causal/dag_hc_professional_v2.svg",
     plot = p1,
@@ -192,7 +209,7 @@ if(nrow(edges_strong) > 0) {
     units = "in",
     bg = "transparent"
   )
-  
+
   cat("  ✓ 已保存: dag_hc_professional_v2.png/svg\n")
 } else {
   cat("  警告: 无边强度 ≥ 0.55 的边\n")
@@ -230,7 +247,7 @@ p2 <- ggraph(tg2, layout = "kk") +
     arrow = arrow(length = unit(3, "mm"), type = "closed"),
     end_cap = circle(4, "mm"),
     color = "grey30",
-    strength = 0.1,  # 轻微弯曲避免重叠
+    strength = 0.1, # 轻微弯曲避免重叠
     lineend = "round"
   ) +
   scale_edge_width_continuous(
@@ -289,7 +306,7 @@ ggsave(
   width = 14,
   height = 10,
   units = "in",
-  dpi = 2400,
+  dpi = 1200,
   bg = "transparent"
 )
 
@@ -318,16 +335,16 @@ edges_cross_group <- edges_core %>%
   filter(from_group != to_group) %>%
   arrange(desc(strength))
 
-if(nrow(edges_cross_group) > 0) {
+if (nrow(edges_cross_group) > 0) {
   # 创建简化的跨组关系图
   edges_cross_top <- edges_cross_group %>% head(30)
-  
+
   g3 <- igraph::graph_from_data_frame(
     d = edges_cross_top,
     directed = TRUE,
     vertices = variable_groups
   )
-  
+
   tg3 <- tidygraph::as_tbl_graph(g3) %>%
     activate(nodes) %>%
     mutate(
@@ -336,7 +353,7 @@ if(nrow(edges_cross_group) > 0) {
     ) %>%
     activate(edges) %>%
     mutate(strength = strength)
-  
+
   p3 <- ggraph(tg3, layout = "graphopt") +
     geom_edge_link(
       aes(width = strength, color = strength),
@@ -393,17 +410,17 @@ if(nrow(edges_cross_group) > 0) {
       panel.background = element_rect(fill = "transparent", color = NA),
       plot.background = element_rect(fill = "transparent", color = NA)
     )
-  
+
   ggsave(
     "figures/14_causal/dag_cross_domain_v2.png",
     plot = p3,
     width = 14,
     height = 10,
     units = "in",
-    dpi = 2400,
+    dpi = 1200,
     bg = "transparent"
   )
-  
+
   ggsave(
     "figures/14_causal/dag_cross_domain_v2.svg",
     plot = p3,
@@ -412,7 +429,7 @@ if(nrow(edges_cross_group) > 0) {
     units = "in",
     bg = "transparent"
   )
-  
+
   cat("  ✓ 已保存: dag_cross_domain_v2.png/svg\n")
 }
 
@@ -434,7 +451,7 @@ adj_matrix <- matrix(0, nrow = length(all_nodes), ncol = length(all_nodes))
 rownames(adj_matrix) <- all_nodes
 colnames(adj_matrix) <- all_nodes
 
-for(i in 1:nrow(edges_matrix)) {
+for (i in 1:nrow(edges_matrix)) {
   adj_matrix[edges_matrix$from[i], edges_matrix$to[i]] <- edges_matrix$strength[i]
 }
 
@@ -490,7 +507,7 @@ ggsave(
   width = 12,
   height = 11,
   units = "in",
-  dpi = 2400,
+  dpi = 1200,
   bg = "transparent"
 )
 
@@ -513,4 +530,3 @@ cat("1. dag_hc_professional_v2.png/svg - 完整网络(strength≥0.55)\n")
 cat("2. dag_core_pathways_v2.png/svg - 核心路径(top 50)\n")
 cat("3. dag_cross_domain_v2.png/svg - 跨域因果关系\n")
 cat("4. dag_strength_matrix_v2.png/svg - 强度矩阵热图\n\n")
-

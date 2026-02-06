@@ -11,7 +11,7 @@ rm(list = ls())
 gc()
 
 # 设置工作目录
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必需的R包（包含svglite以输出SVG矢量图）
 required_packages <- c("terra", "sf", "tidyverse", "RColorBrewer", "viridis", "cowplot", "scales", "svglite")
@@ -35,9 +35,9 @@ log_message <- function(msg) {
 log_message("设置Nature期刊绘图标准...")
 
 # Nature期刊要求
-DPI <- 2400  # 分辨率（统一提高到 2400 dpi）
-FONT_FAMILY <- "Arial"  # 无衬线字体
-BASE_SIZE <- 12  # 基础字体大小
+DPI <- 2400 # 分辨率（统一提高到 2400 dpi）
+FONT_FAMILY <- "Arial" # 无衬线字体
+BASE_SIZE <- 12 # 基础字体大小
 
 # 设置ggplot2主题（Nature风格）
 theme_nature <- function() {
@@ -101,25 +101,25 @@ lc_classes <- c(
 
 # Hydroclim 19个指标的英文名称（与层顺序一致，单位见注释）
 hydro_names <- c(
-  "Annual Mean Upstream Temperature (°C)",                 # 1  (÷10)
-  "Mean Upstream Diurnal Range (°C)",                      # 2  (÷10)
-  "Upstream Isothermality (index, ×100)",                  # 3  (原始×100)
-  "Upstream Temperature Seasonality (index, ×100)",        # 4  (原始×100)
-  "Max Upstream Temp of Warmest Month (°C)",               # 5  (÷10)
-  "Min Upstream Temp of Coldest Month (°C)",               # 6  (÷10)
-  "Upstream Temperature Annual Range (°C)",                # 7  (÷10)
-  "Mean Upstream Temp of Wettest Quarter (°C)",            # 8  (÷10)
-  "Mean Upstream Temp of Driest Quarter (°C)",             # 9  (÷10)
-  "Mean Upstream Temp of Warmest Quarter (°C)",            # 10 (÷10)
-  "Mean Upstream Temp of Coldest Quarter (°C)",            # 11 (÷10)
-  "Annual Upstream Precipitation (mm)",                    # 12
-  "Upstream Precipitation of Wettest Month (mm)",          # 13
-  "Upstream Precipitation of Driest Month (mm)",           # 14
-  "Upstream Precipitation Seasonality (index, ×100)",      # 15 (原始×100)
-  "Upstream Precipitation of Wettest Quarter (mm)",        # 16
-  "Upstream Precipitation of Driest Quarter (mm)",         # 17
-  "Upstream Precipitation of Warmest Quarter (mm)",        # 18
-  "Upstream Precipitation of Coldest Quarter (mm)"         # 19
+  "Annual Mean Upstream Temperature (°C)", # 1  (÷10)
+  "Mean Upstream Diurnal Range (°C)", # 2  (÷10)
+  "Upstream Isothermality (index, ×100)", # 3  (原始×100)
+  "Upstream Temperature Seasonality (index, ×100)", # 4  (原始×100)
+  "Max Upstream Temp of Warmest Month (°C)", # 5  (÷10)
+  "Min Upstream Temp of Coldest Month (°C)", # 6  (÷10)
+  "Upstream Temperature Annual Range (°C)", # 7  (÷10)
+  "Mean Upstream Temp of Wettest Quarter (°C)", # 8  (÷10)
+  "Mean Upstream Temp of Driest Quarter (°C)", # 9  (÷10)
+  "Mean Upstream Temp of Warmest Quarter (°C)", # 10 (÷10)
+  "Mean Upstream Temp of Coldest Quarter (°C)", # 11 (÷10)
+  "Annual Upstream Precipitation (mm)", # 12
+  "Upstream Precipitation of Wettest Month (mm)", # 13
+  "Upstream Precipitation of Driest Month (mm)", # 14
+  "Upstream Precipitation Seasonality (index, ×100)", # 15 (原始×100)
+  "Upstream Precipitation of Wettest Quarter (mm)", # 16
+  "Upstream Precipitation of Driest Quarter (mm)", # 17
+  "Upstream Precipitation of Warmest Quarter (mm)", # 18
+  "Upstream Precipitation of Coldest Quarter (mm)" # 19
 )
 
 # 月份英文缩写
@@ -215,72 +215,82 @@ variable_config <- list(
   landcover_min = list(
     file = "landcover_minimum.tif",
     bands = 1:12,
-    names = paste0(lc_classes, " (minimum, %)")
-    , group = "Land Cover", color_scheme = "YlGn"
+    names = paste0(lc_classes, " (minimum, %)"),
+    group = "Land Cover", color_scheme = "YlGn"
   ),
   landcover_max = list(
     file = "landcover_maximum.tif",
     bands = 1:12,
-    names = paste0(lc_classes, " (maximum, %)")
-    , group = "Land Cover", color_scheme = "YlGn"
+    names = paste0(lc_classes, " (maximum, %)"),
+    group = "Land Cover", color_scheme = "YlGn"
   ),
   landcover_range = list(
     file = "landcover_range.tif",
     bands = 1:12,
-    names = paste0(lc_classes, " (range, %)")
-    , group = "Land Cover", color_scheme = "YlGn"
+    names = paste0(lc_classes, " (range, %)"),
+    group = "Land Cover", color_scheme = "YlGn"
   ),
   landcover_avg = list(
     file = "landcover_average.tif",
     bands = 1:12,
-    names = paste0(lc_classes, " (average, %)")
-    , group = "Land Cover", color_scheme = "YlGn"
+    names = paste0(lc_classes, " (average, %)"),
+    group = "Land Cover", color_scheme = "YlGn"
   ),
   landcover_wavg = list(
     file = "landcover_weighted_average.tif",
     bands = 1:12,
-    names = paste0(lc_classes, " (weighted average, %)")
-    , group = "Land Cover", color_scheme = "YlGn"
+    names = paste0(lc_classes, " (weighted average, %)"),
+    group = "Land Cover", color_scheme = "YlGn"
   ),
   # 土壤（5种统计）
   soil_min = list(
     file = "soil_minimum.tif",
     bands = 1:10,
-    names = c("Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
-              "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
-              "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"),
+    names = c(
+      "Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
+      "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
+      "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"
+    ),
     group = "Soil", color_scheme = "BrBG"
   ),
   soil_max = list(
     file = "soil_maximum.tif",
     bands = 1:10,
-    names = c("Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
-              "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
-              "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"),
+    names = c(
+      "Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
+      "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
+      "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"
+    ),
     group = "Soil", color_scheme = "BrBG"
   ),
   soil_range = list(
     file = "soil_range.tif",
     bands = 1:10,
-    names = c("Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
-              "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
-              "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"),
+    names = c(
+      "Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
+      "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
+      "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"
+    ),
     group = "Soil", color_scheme = "BrBG"
   ),
   soil_avg = list(
     file = "soil_average.tif",
     bands = 1:10,
-    names = c("Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
-              "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
-              "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"),
+    names = c(
+      "Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
+      "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
+      "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"
+    ),
     group = "Soil", color_scheme = "BrBG"
   ),
   soil_wavg = list(
     file = "soil_weighted_average.tif",
     bands = 1:10,
-    names = c("Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
-              "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
-              "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"),
+    names = c(
+      "Soil organic carbon (g/kg)", "Soil pH (unit)", "Sand (%)", "Silt (%)",
+      "Clay (%)", ">2mm coarse fragments (%)", "Cation exchange capacity (cmol/kg)",
+      "Bulk density (kg/m³)", "Depth to bedrock (cm)", "Probability of R horizon (%)"
+    ),
     group = "Soil", color_scheme = "BrBG"
   ),
   # 地质（加权计数）
@@ -305,7 +315,7 @@ if (!is.null(ENABLED_GROUPS)) {
     isTRUE(x$group %in% ENABLED_GROUPS)
   })
   variable_config <- variable_config[keep_idx]
-  log_message(paste0("本次仅绘制组: ", paste(unique(sapply(variable_config, function(x) x$group)), collapse=", "))) 
+  log_message(paste0("本次仅绘制组: ", paste(unique(sapply(variable_config, function(x) x$group)), collapse = ", ")))
 }
 
 # 统计总图数
@@ -320,148 +330,177 @@ log_message(paste0("总共需要绘制 ", total_plots, " 个图"))
 plot_raster_layer <- function(raster_layer, layer_name, color_scheme, china_sf,
                               output_file, file_name, band_idx,
                               qc_rast = NULL, width = 8, height = 6) {
-  
-  tryCatch({
-    
-    # -------------------------
-    # 质量控制：对齐并屏蔽被剔除像元（cells_removed==1），统计缺失填补数
-    # -------------------------
-    qc_note <- ""
-    if (!is.null(qc_rast)) {
-      # 重采样质量控制栅格以匹配当前图层分辨率/范围
-      qc_aligned <- tryCatch({
-        resample(qc_rast, raster_layer, method = "near")
-      }, error = function(e) {
-        qc_rast
-      })
-      cells_missing <- qc_aligned[[1]]  # missing_cells
-      cells_removed <- qc_aligned[[2]]  # cells_removed
-      # 屏蔽被剔除像元
-      raster_layer <- mask(raster_layer, cells_removed, maskvalues = 1)
-      # 统计缺失填补与剔除数量
-      missing_count <- tryCatch({
-        as.numeric(global(ifel(cells_missing == 1, 1, 0), "sum", na.rm = TRUE)[1,1])
-      }, error = function(e) NA)
-      removed_count <- tryCatch({
-        as.numeric(global(ifel(cells_removed == 1, 1, 0), "sum", na.rm = TRUE)[1,1])
-      }, error = function(e) NA)
-      qc_note <- paste0("QC: filled=", ifelse(is.na(missing_count), "NA", missing_count),
-                        ", removed=", ifelse(is.na(removed_count), "NA", removed_count))
-    }
+  tryCatch(
+    {
+      # -------------------------
+      # 质量控制：对齐并屏蔽被剔除像元（cells_removed==1），统计缺失填补数
+      # -------------------------
+      qc_note <- ""
+      if (!is.null(qc_rast)) {
+        # 重采样质量控制栅格以匹配当前图层分辨率/范围
+        qc_aligned <- tryCatch(
+          {
+            resample(qc_rast, raster_layer, method = "near")
+          },
+          error = function(e) {
+            qc_rast
+          }
+        )
+        cells_missing <- qc_aligned[[1]] # missing_cells
+        cells_removed <- qc_aligned[[2]] # cells_removed
+        # 屏蔽被剔除像元
+        raster_layer <- mask(raster_layer, cells_removed, maskvalues = 1)
+        # 统计缺失填补与剔除数量
+        missing_count <- tryCatch(
+          {
+            as.numeric(global(ifel(cells_missing == 1, 1, 0), "sum", na.rm = TRUE)[1, 1])
+          },
+          error = function(e) NA
+        )
+        removed_count <- tryCatch(
+          {
+            as.numeric(global(ifel(cells_removed == 1, 1, 0), "sum", na.rm = TRUE)[1, 1])
+          },
+          error = function(e) NA
+        )
+        qc_note <- paste0(
+          "QC: filled=", ifelse(is.na(missing_count), "NA", missing_count),
+          ", removed=", ifelse(is.na(removed_count), "NA", removed_count)
+        )
+      }
 
-    # -------------------------
-    # 单位缩放：依据文件与波段类型进行数值缩放（仅用于显示，不改写源数据）
-    # -------------------------
-    scale_raster_layer <- function(x, file_name, band_idx) {
-      # 坡度：度×100 -> 度
-      if (file_name == "slope.tif") return(x / 100)
-      # 月最低/最高温（平均/加权）：℃×10 -> ℃
-      if (file_name %in% c("monthly_tmin_average.tif", "monthly_tmax_average.tif",
-                           "monthly_tmin_weighted_average.tif", "monthly_tmax_weighted_average.tif")) {
-        return(x / 10)
+      # -------------------------
+      # 单位缩放：依据文件与波段类型进行数值缩放（仅用于显示，不改写源数据）
+      # -------------------------
+      scale_raster_layer <- function(x, file_name, band_idx) {
+        # 坡度：度×100 -> 度
+        if (file_name == "slope.tif") {
+          return(x / 100)
+        }
+        # 月最低/最高温（平均/加权）：℃×10 -> ℃
+        if (file_name %in% c(
+          "monthly_tmin_average.tif", "monthly_tmax_average.tif",
+          "monthly_tmin_weighted_average.tif", "monthly_tmax_weighted_average.tif"
+        )) {
+          return(x / 10)
+        }
+        # 土壤pH：pH×10 -> pH
+        if (file_name %in% c(
+          "soil_minimum.tif", "soil_maximum.tif", "soil_range.tif",
+          "soil_average.tif", "soil_weighted_average.tif"
+        )) {
+          if (band_idx == 2) {
+            return(x / 10)
+          } else {
+            return(x)
+          }
+        }
+        # 上游Bioclim：温度类波段（1,2,5~11）℃×10 -> ℃；03/04/15为指数(×100)不缩放；降水类不缩放
+        if (file_name %in% c("hydroclim_average+sum.tif", "hydroclim_weighted_average+sum.tif")) {
+          if (band_idx %in% c(1, 2, 5, 6, 7, 8, 9, 10, 11)) {
+            return(x / 10)
+          } else {
+            return(x)
+          }
+        }
+        # 其他：不缩放
+        return(x)
       }
-      # 土壤pH：pH×10 -> pH
-      if (file_name %in% c("soil_minimum.tif", "soil_maximum.tif", "soil_range.tif",
-                           "soil_average.tif", "soil_weighted_average.tif")) {
-        if (band_idx == 2) return(x / 10) else return(x)
-      }
-      # 上游Bioclim：温度类波段（1,2,5~11）℃×10 -> ℃；03/04/15为指数(×100)不缩放；降水类不缩放
-      if (file_name %in% c("hydroclim_average+sum.tif", "hydroclim_weighted_average+sum.tif")) {
-        if (band_idx %in% c(1,2,5,6,7,8,9,10,11)) return(x / 10) else return(x)
-      }
-      # 其他：不缩放
-      return(x)
-    }
-    raster_layer <- scale_raster_layer(raster_layer, file_name, band_idx)
+      raster_layer <- scale_raster_layer(raster_layer, file_name, band_idx)
 
-    # 转换为数据框（用于ggplot2）
-    raster_df <- as.data.frame(raster_layer, xy = TRUE, na.rm = TRUE)
-    colnames(raster_df)[3] <- "value"
-    
-    # 如果数据为空，跳过
-    if (nrow(raster_df) == 0) {
-      log_message(paste0("  - 跳过（无数据）: ", layer_name))
+      # 转换为数据框（用于ggplot2）
+      raster_df <- as.data.frame(raster_layer, xy = TRUE, na.rm = TRUE)
+      colnames(raster_df)[3] <- "value"
+
+      # 如果数据为空，跳过
+      if (nrow(raster_df) == 0) {
+        log_message(paste0("  - 跳过（无数据）: ", layer_name))
+        return(FALSE)
+      }
+
+      # 数据质量检查
+      n_valid <- sum(!is.na(raster_df$value))
+      data_range <- range(raster_df$value, na.rm = TRUE)
+      log_message(paste0(
+        "    有效像元: ", n_valid,
+        ", 值域: [", round(data_range[1], 2), ", ",
+        round(data_range[2], 2), "]"
+      ))
+
+      # 处理极端值（使用分位数裁剪）
+      q01 <- quantile(raster_df$value, 0.01, na.rm = TRUE)
+      q99 <- quantile(raster_df$value, 0.99, na.rm = TRUE)
+
+      # 选择配色方案
+      if (color_scheme == "terrain.colors") {
+        colors <- terrain.colors(100)
+      } else if (color_scheme %in% c(
+        "Blues", "Greens", "Reds", "Oranges",
+        "YlOrRd", "YlGnBu", "YlGn", "RdYlBu",
+        "RdBu", "BrBG", "Spectral"
+      )) {
+        # 对于RColorBrewer调色板，根据数据类型调整方向
+        if (color_scheme %in% c("RdBu", "RdYlBu", "BrBG")) {
+          colors <- brewer.pal(11, color_scheme) # 保持原始方向（冷暖色）
+        } else {
+          colors <- brewer.pal(9, color_scheme)
+        }
+      } else {
+        colors <- viridis(100, option = "viridis")
+      }
+
+      # 创建ggplot图（图题使用英文；图注加入QC说明）
+      p <- ggplot() +
+        geom_raster(data = raster_df, aes(x = x, y = y, fill = value)) +
+        geom_sf(data = china_sf, fill = NA, color = "black", size = 0.3, alpha = 0.8) +
+        scale_fill_gradientn(
+          colors = colors,
+          na.value = "transparent",
+          name = "",
+          limits = c(q01, q99),
+          oob = scales::squish # 将超出范围的值压缩到边界
+        ) +
+        coord_sf(expand = FALSE) + # 根据中国边界自动确定范围
+        labs(
+          title = layer_name,
+          subtitle = qc_note,
+          x = "Longitude (°E)",
+          y = "Latitude (°N)"
+        ) +
+        theme_nature() +
+        theme(
+          legend.key.width = unit(0.5, "cm"),
+          legend.key.height = unit(1.5, "cm")
+        )
+
+      # 保存PNG（2400 dpi，透明背景）
+      ggsave(
+        filename = paste0(output_file, ".png"),
+        plot = p,
+        width = width,
+        height = height,
+        dpi = DPI,
+        units = "in",
+        bg = "transparent"
+      )
+      # 保存SVG（矢量图，透明背景）
+      ggsave(
+        filename = paste0(output_file, ".svg"),
+        plot = p,
+        width = width,
+        height = height,
+        units = "in",
+        bg = "transparent",
+        device = "svg"
+      )
+
+      return(TRUE)
+    },
+    error = function(e) {
+      log_message(paste0("  - 错误: ", e$message))
       return(FALSE)
     }
-    
-    # 数据质量检查
-    n_valid <- sum(!is.na(raster_df$value))
-    data_range <- range(raster_df$value, na.rm = TRUE)
-    log_message(paste0("    有效像元: ", n_valid, 
-                      ", 值域: [", round(data_range[1], 2), ", ", 
-                      round(data_range[2], 2), "]"))
-    
-    # 处理极端值（使用分位数裁剪）
-    q01 <- quantile(raster_df$value, 0.01, na.rm = TRUE)
-    q99 <- quantile(raster_df$value, 0.99, na.rm = TRUE)
-    
-    # 选择配色方案
-    if (color_scheme == "terrain.colors") {
-      colors <- terrain.colors(100)
-    } else if (color_scheme %in% c("Blues", "Greens", "Reds", "Oranges", 
-                                     "YlOrRd", "YlGnBu", "YlGn", "RdYlBu", 
-                                     "RdBu", "BrBG", "Spectral")) {
-      # 对于RColorBrewer调色板，根据数据类型调整方向
-      if (color_scheme %in% c("RdBu", "RdYlBu", "BrBG")) {
-        colors <- brewer.pal(11, color_scheme)  # 保持原始方向（冷暖色）
-      } else {
-        colors <- brewer.pal(9, color_scheme)
-      }
-    } else {
-      colors <- viridis(100, option = "viridis")
-    }
-    
-    # 创建ggplot图（图题使用英文；图注加入QC说明）
-    p <- ggplot() +
-      geom_raster(data = raster_df, aes(x = x, y = y, fill = value)) +
-      geom_sf(data = china_sf, fill = NA, color = "black", size = 0.3, alpha = 0.8) +
-      scale_fill_gradientn(
-        colors = colors, 
-        na.value = "transparent",
-        name = "",
-        limits = c(q01, q99),
-        oob = scales::squish  # 将超出范围的值压缩到边界
-      ) +
-      coord_sf(expand = FALSE) +  # 根据中国边界自动确定范围
-      labs(
-        title = layer_name,
-        subtitle = qc_note,
-        x = "Longitude (°E)",
-        y = "Latitude (°N)"
-      ) +
-      theme_nature() +
-      theme(
-        legend.key.width = unit(0.5, "cm"),
-        legend.key.height = unit(1.5, "cm")
-      )
-    
-    # 保存PNG（2400 dpi，透明背景）
-    ggsave(
-      filename = paste0(output_file, ".png"),
-      plot = p,
-      width = width,
-      height = height,
-      dpi = DPI,
-      units = "in",
-      bg = "transparent"
-    )
-    # 保存SVG（矢量图，透明背景）
-    ggsave(
-      filename = paste0(output_file, ".svg"),
-      plot = p,
-      width = width,
-      height = height,
-      units = "in",
-      bg = "transparent",
-      device = "svg"
-    )
-
-    return(TRUE)
-    
-  }, error = function(e) {
-    log_message(paste0("  - 错误: ", e$message))
-    return(FALSE)
-  })
+  )
 }
 
 ################################################################################
@@ -491,77 +530,80 @@ if (file.exists(qc_path)) {
 
 # 循环处理每组变量
 for (var_group in names(variable_config)) {
-  
   config <- variable_config[[var_group]]
   file_path <- file.path(data_dir, config$file)
-  
+
   log_message(paste0("\n处理变量组: ", var_group, " (", config$file, ")"))
-  
+
   if (!file.exists(file_path)) {
     log_message(paste0("  - 文件不存在，跳过"))
     next
   }
-  
-  tryCatch({
-    
-    # 读取栅格数据
-    raster_data <- rast(file_path)
-    
-    # 循环处理每个指定的波段
-    for (i in seq_along(config$bands)) {
-      
-      band_idx <- config$bands[i]
-      layer_name <- config$names[i]
-      
-      # 提取指定波段
-      raster_layer <- raster_data[[band_idx]]
-      
-      # 生成输出文件名（安全的文件名）
-      safe_name <- gsub("[^A-Za-z0-9_]", "_", layer_name)
-      safe_name <- gsub("_{2,}", "_", safe_name)  # 移除多余下划线
-      output_file <- file.path(output_dir, 
-                               paste0(sprintf("%02d", plot_counter + 1), "_", 
-                                     var_group, "_", safe_name))
-      
-      # 绘制图形
-      log_message(paste0("  [", plot_counter + 1, "/", total_plots, "] ", layer_name))
-      
-      success <- plot_raster_layer(
-        raster_layer = raster_layer,
-        layer_name = layer_name,
-        color_scheme = config$color_scheme,
-        china_sf = china_sf,
-        output_file = output_file,
-        file_name = config$file,
-        band_idx = band_idx,
-        qc_rast = qc_rast
-      )
-      
-      # 记录处理结果
-      plot_log <- rbind(plot_log, data.frame(
-        file = config$file,
-        band = band_idx,
-        layer_name = layer_name,
-        status = ifelse(success, "Success", "Failed"),
-        stringsAsFactors = FALSE
-      ))
-      
-      if (success) {
-        plot_counter <- plot_counter + 1
+
+  tryCatch(
+    {
+      # 读取栅格数据
+      raster_data <- rast(file_path)
+
+      # 循环处理每个指定的波段
+      for (i in seq_along(config$bands)) {
+        band_idx <- config$bands[i]
+        layer_name <- config$names[i]
+
+        # 提取指定波段
+        raster_layer <- raster_data[[band_idx]]
+
+        # 生成输出文件名（安全的文件名）
+        safe_name <- gsub("[^A-Za-z0-9_]", "_", layer_name)
+        safe_name <- gsub("_{2,}", "_", safe_name) # 移除多余下划线
+        output_file <- file.path(
+          output_dir,
+          paste0(
+            sprintf("%02d", plot_counter + 1), "_",
+            var_group, "_", safe_name
+          )
+        )
+
+        # 绘制图形
+        log_message(paste0("  [", plot_counter + 1, "/", total_plots, "] ", layer_name))
+
+        success <- plot_raster_layer(
+          raster_layer = raster_layer,
+          layer_name = layer_name,
+          color_scheme = config$color_scheme,
+          china_sf = china_sf,
+          output_file = output_file,
+          file_name = config$file,
+          band_idx = band_idx,
+          qc_rast = qc_rast
+        )
+
+        # 记录处理结果
+        plot_log <- rbind(plot_log, data.frame(
+          file = config$file,
+          band = band_idx,
+          layer_name = layer_name,
+          status = ifelse(success, "Success", "Failed"),
+          stringsAsFactors = FALSE
+        ))
+
+        if (success) {
+          plot_counter <- plot_counter + 1
+        }
+
+        # 清理内存
+        rm(raster_layer)
+        gc()
       }
-      
+
       # 清理内存
-      rm(raster_layer)
+      rm(raster_data)
       gc()
+    },
+    error = function(e) {
+      log_message(paste0("  - 处理错误: ", e$message))
     }
-    
-    # 清理内存
-    rm(raster_data)
-    gc()
-    
-  }, error = function(e) {
-    log_message(paste0("  - 处理错误: ", e$message))
-  })
+  )
 }
 
 ################################################################################
@@ -603,4 +645,3 @@ log_message(paste0("- 字体：Arial"))
 log_message("========================================")
 
 log_message("脚本执行完毕！")
-

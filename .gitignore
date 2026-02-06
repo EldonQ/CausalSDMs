@@ -70,6 +70,7 @@ zhujiang/
 Drawing/
 earthenvstreams/
 earthenvstreams_china/
+Document/
 
 # 物种出现数据（如果是大文件）
 Carassius_auratusOCC/**/*.csv

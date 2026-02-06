@@ -1,49 +1,48 @@
-variable,file,band,category
-dem_range,elevation.tif,3,G1_TopoSlopeFlow
-dem_avg,elevation.tif,4,G1_TopoSlopeFlow
-slope_range,slope.tif,3,G1_TopoSlopeFlow
-slope_avg,slope.tif,4,G1_TopoSlopeFlow
-flow_length,flow_acc.tif,1,G1_TopoSlopeFlow
-flow_acc,flow_acc.tif,2,G1_TopoSlopeFlow
-hydro_wavg_01,hydroclim_weighted_average+sum.tif,1,G2_Hydroclim_wavg
-hydro_wavg_02,hydroclim_weighted_average+sum.tif,2,G2_Hydroclim_wavg
-hydro_wavg_03,hydroclim_weighted_average+sum.tif,3,G2_Hydroclim_wavg
-hydro_wavg_04,hydroclim_weighted_average+sum.tif,4,G2_Hydroclim_wavg
-hydro_wavg_05,hydroclim_weighted_average+sum.tif,5,G2_Hydroclim_wavg
-hydro_wavg_06,hydroclim_weighted_average+sum.tif,6,G2_Hydroclim_wavg
-hydro_wavg_07,hydroclim_weighted_average+sum.tif,7,G2_Hydroclim_wavg
-hydro_wavg_08,hydroclim_weighted_average+sum.tif,8,G2_Hydroclim_wavg
-hydro_wavg_09,hydroclim_weighted_average+sum.tif,9,G2_Hydroclim_wavg
-hydro_wavg_10,hydroclim_weighted_average+sum.tif,10,G2_Hydroclim_wavg
-hydro_wavg_11,hydroclim_weighted_average+sum.tif,11,G2_Hydroclim_wavg
-hydro_wavg_12,hydroclim_weighted_average+sum.tif,12,G2_Hydroclim_wavg
-hydro_wavg_13,hydroclim_weighted_average+sum.tif,13,G2_Hydroclim_wavg
-hydro_wavg_14,hydroclim_weighted_average+sum.tif,14,G2_Hydroclim_wavg
-hydro_wavg_15,hydroclim_weighted_average+sum.tif,15,G2_Hydroclim_wavg
-hydro_wavg_16,hydroclim_weighted_average+sum.tif,16,G2_Hydroclim_wavg
-hydro_wavg_17,hydroclim_weighted_average+sum.tif,17,G2_Hydroclim_wavg
-hydro_wavg_18,hydroclim_weighted_average+sum.tif,18,G2_Hydroclim_wavg
-hydro_wavg_19,hydroclim_weighted_average+sum.tif,19,G2_Hydroclim_wavg
-lc_wavg_01,landcover_weighted_average.tif,1,G3_Landcover_wavg
-lc_wavg_02,landcover_weighted_average.tif,2,G3_Landcover_wavg
-lc_wavg_03,landcover_weighted_average.tif,3,G3_Landcover_wavg
-lc_wavg_04,landcover_weighted_average.tif,4,G3_Landcover_wavg
-lc_wavg_05,landcover_weighted_average.tif,5,G3_Landcover_wavg
-lc_wavg_06,landcover_weighted_average.tif,6,G3_Landcover_wavg
-lc_wavg_07,landcover_weighted_average.tif,7,G3_Landcover_wavg
-lc_wavg_08,landcover_weighted_average.tif,8,G3_Landcover_wavg
-lc_wavg_09,landcover_weighted_average.tif,9,G3_Landcover_wavg
-lc_wavg_10,landcover_weighted_average.tif,10,G3_Landcover_wavg
-lc_wavg_11,landcover_weighted_average.tif,11,G3_Landcover_wavg
-lc_wavg_12,landcover_weighted_average.tif,12,G3_Landcover_wavg
-soil_wavg_01,soil_weighted_average.tif,1,G4_Soil_wavg
-soil_wavg_02,soil_weighted_average.tif,2,G4_Soil_wavg
-soil_wavg_03,soil_weighted_average.tif,3,G4_Soil_wavg
-soil_wavg_04,soil_weighted_average.tif,4,G4_Soil_wavg
-soil_wavg_05,soil_weighted_average.tif,5,G4_Soil_wavg
-soil_wavg_06,soil_weighted_average.tif,6,G4_Soil_wavg
-soil_wavg_07,soil_weighted_average.tif,7,G4_Soil_wavg
-soil_wavg_08,soil_weighted_average.tif,8,G4_Soil_wavg
-soil_wavg_09,soil_weighted_average.tif,9,G4_Soil_wavg
-soil_wavg_10,soil_weighted_average.tif,10,G4_Soil_wavg
-
+variable,category,description_en,description_zh,unit,plot_label,heatmap_group,file,band
+dem_range,地形,Elevation range,高程范围（最大-最小）,m,Elevation Range,Topography & Hydrology,elevation.tif,3
+dem_avg,地形,Average elevation,平均高程,m,Mean Elevation,Topography & Hydrology,elevation.tif,4
+slope_range,地形,Slope range,坡度范围（最大-最小）,度×100,Slope Range,Topography & Hydrology,slope.tif,3
+slope_avg,地形,Average slope,平均坡度,度×100,Mean Slope,Topography & Hydrology,slope.tif,4
+flow_length,水文,Number of upstream stream grid cells,上游河道网格数量,count,Flow Length,Topography & Hydrology,flow_acc.tif,1
+flow_acc,水文,Number of upstream catchment grid cells,上游汇水区网格数量,count,Flow Accumulation,Topography & Hydrology,flow_acc.tif,2
+hydro_wavg_01,水文气候,Annual Mean Upstream Temperature (BIO1),年均上游气温（加权）,℃×10,Ann. Mean Temp.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,1
+hydro_wavg_02,水文气候,Mean Upstream Diurnal Range (BIO2),上游昼夜温差均值（加权）,℃×10,Mean Diurnal Range,Upstream Bioclim,hydroclim_weighted_average+sum.tif,2
+hydro_wavg_03,水文气候,Upstream Isothermality (BIO3),上游等温性指数（加权）,×100,Isothermality,Upstream Bioclim,hydroclim_weighted_average+sum.tif,3
+hydro_wavg_04,水文气候,Temperature Seasonality (BIO4),上游气温季节性（加权）,℃×10,Temp. Seasonality,Upstream Bioclim,hydroclim_weighted_average+sum.tif,4
+hydro_wavg_05,水文气候,Max Temp of Warmest Month (BIO5),上游最暖月最高气温（加权）,℃×10,Max Temp. Warmest Mo.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,5
+hydro_wavg_06,水文气候,Min Temp of Coldest Month (BIO6),上游最冷月最低气温（加权）,℃×10,Min Temp. Coldest Mo.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,6
+hydro_wavg_07,水文气候,Temperature Annual Range (BIO7),上游年温差（加权）,℃×10,Temp. Ann. Range,Upstream Bioclim,hydroclim_weighted_average+sum.tif,7
+hydro_wavg_08,水文气候,Mean Temp of Wettest Quarter (BIO8),上游最湿季平均气温（加权）,℃×10,Mean Temp. Wettest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,8
+hydro_wavg_09,水文气候,Mean Temp of Driest Quarter (BIO9),上游最干季平均气温（加权）,℃×10,Mean Temp. Driest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,9
+hydro_wavg_10,水文气候,Mean Temp of Warmest Quarter (BIO10),上游最暖季平均气温（加权）,℃×10,Mean Temp. Warmest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,10
+hydro_wavg_11,水文气候,Mean Temp of Coldest Quarter (BIO11),上游最冷季平均气温（加权）,℃×10,Mean Temp. Coldest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,11
+hydro_wavg_12,水文气候,Annual Upstream Precipitation (BIO12),年度上游降水量（加权）,mm,Ann. Precip.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,12
+hydro_wavg_13,水文气候,Precipitation of Wettest Month (BIO13),上游最湿月降水量（加权）,mm,Precip. Wettest Mo.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,13
+hydro_wavg_14,水文气候,Precipitation of Driest Month (BIO14),上游最干月降水量（加权）,mm,Precip. Driest Mo.,Upstream Bioclim,hydroclim_weighted_average+sum.tif,14
+hydro_wavg_15,水文气候,Precipitation Seasonality (BIO15),上游降水季节性（加权）,×100,Precip. Seasonality,Upstream Bioclim,hydroclim_weighted_average+sum.tif,15
+hydro_wavg_16,水文气候,Precipitation of Wettest Quarter (BIO16),上游最湿季降水量（加权）,mm,Precip. Wettest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,16
+hydro_wavg_17,水文气候,Precipitation of Driest Quarter (BIO17),上游最干季降水量（加权）,mm,Precip. Driest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,17
+hydro_wavg_18,水文气候,Precipitation of Warmest Quarter (BIO18),上游最暖季降水量（加权）,mm,Precip. Warmest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,18
+hydro_wavg_19,水文气候,Precipitation of Coldest Quarter (BIO19),上游最冷季降水量（加权）,mm,Precip. Coldest Qtr,Upstream Bioclim,hydroclim_weighted_average+sum.tif,19
+lc_wavg_01,土地覆盖,Evergreen/deciduous needleleaf trees,常绿/落叶针叶林（加权平均）,%,Needleleaf Trees,Land Cover,landcover_weighted_average.tif,1
+lc_wavg_02,土地覆盖,Evergreen broadleaf trees,常绿阔叶林（加权平均）,%,Evergreen Broadleaf,Land Cover,landcover_weighted_average.tif,2
+lc_wavg_03,土地覆盖,Deciduous broadleaf trees,落叶阔叶林（加权平均）,%,Deciduous Broadleaf,Land Cover,landcover_weighted_average.tif,3
+lc_wavg_04,土地覆盖,Mixed/other trees,混交/其他树林（加权平均）,%,Mixed Trees,Land Cover,landcover_weighted_average.tif,4
+lc_wavg_05,土地覆盖,Shrubs,灌木（加权平均）,%,Shrubs,Land Cover,landcover_weighted_average.tif,5
+lc_wavg_06,土地覆盖,Herbaceous vegetation,草本植被（加权平均）,%,Herbaceous Veg.,Land Cover,landcover_weighted_average.tif,6
+lc_wavg_07,土地覆盖,Cultivated and managed vegetation,农业耕作与管理植被（加权平均）,%,Cultivated Veg.,Land Cover,landcover_weighted_average.tif,7
+lc_wavg_08,土地覆盖,Regularly flooded shrub/herbaceous,经常性淹涝灌/草植被（加权平均）,%,Flooded Veg.,Land Cover,landcover_weighted_average.tif,8
+lc_wavg_09,土地覆盖,Urban/built-up,城市/建成区（加权平均）,%,Urban/Built-up,Land Cover,landcover_weighted_average.tif,9
+lc_wavg_10,土地覆盖,Snow/ice,积雪/冰（加权平均）,%,Snow/Ice,Land Cover,landcover_weighted_average.tif,10
+lc_wavg_11,土地覆盖,Barren lands/sparse vegetation,荒漠/稀疏植被（加权平均）,%,Barren/Sparse,Land Cover,landcover_weighted_average.tif,11
+lc_wavg_12,土地覆盖,Open water,开阔水体（加权平均）,%,Open Water,Land Cover,landcover_weighted_average.tif,12
+soil_wavg_01,土壤,Soil organic carbon,土壤有机碳（加权平均）,g/kg,Soil Organic Carbon,Soil,soil_weighted_average.tif,1
+soil_wavg_02,土壤,Soil pH in H2O,土壤 pH（加权平均）,pH×10,Soil pH,Soil,soil_weighted_average.tif,2
+soil_wavg_03,土壤,Sand content mass fraction,土壤砂粒含量（加权平均）,%,Sand Content,Soil,soil_weighted_average.tif,3
+soil_wavg_04,土壤,Silt content mass fraction,土壤粉粒含量（加权平均）,%,Silt Content,Soil,soil_weighted_average.tif,4
+soil_wavg_05,土壤,Clay content mass fraction,土壤黏粒含量（加权平均）,%,Clay Content,Soil,soil_weighted_average.tif,5
+soil_wavg_06,土壤,Coarse fragments (>2 mm) volumetric,大颗粒体积分数>2mm（加权平均）,%,Coarse Fragments,Soil,soil_weighted_average.tif,6
+soil_wavg_07,土壤,Cation exchange capacity,阳离子交换量（加权平均）,cmol/kg,Cation Exch. Cap.,Soil,soil_weighted_average.tif,7
+soil_wavg_08,土壤,Bulk density of fine earth,细土体积密度（加权平均）,kg/m³,Bulk Density,Soil,soil_weighted_average.tif,8
+soil_wavg_09,土壤,Depth to bedrock (≤240 cm),基岩深度（加权平均）,cm,Bedrock Depth,Soil,soil_weighted_average.tif,9
+soil_wavg_10,土壤,Probability of R horizon,基岩（R 层）出现概率（加权平均）,%,Bedrock Prob.,Soil,soil_weighted_average.tif,10

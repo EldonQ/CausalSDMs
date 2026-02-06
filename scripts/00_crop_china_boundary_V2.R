@@ -10,7 +10,7 @@ rm(list = ls())
 gc()
 
 # 设置工作目录
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必需的R包
 library(terra)
@@ -95,71 +95,73 @@ processing_log <- data.frame(
 
 # 循环处理每个nc文件
 for (nc_file in nc_files) {
-  
   file_name <- basename(nc_file)
   log_message(paste0("\n[", which(nc_files == nc_file), "/", length(nc_files), "] ", file_name))
-  
+
   start_time <- Sys.time()
-  
-  tryCatch({
-    
-    # 读取nc文件
-    log_message("  读取...")
-    nc_rast <- rast(nc_file)
-    n_layers <- nlyr(nc_rast)
-    original_size <- file.info(nc_file)$size / 1024^2
-    
-    # 第一步：裁剪到边界范围（矩形）
-    log_message("  裁剪...")
-    nc_cropped <- crop(nc_rast, china_boundary)
-    
-    # 第二步：掩膜保留边界内的数据
-    log_message("  掩膜...")
-    nc_cropped <- mask(nc_cropped, china_boundary)
-    
-    # 检查数据
-    test_values <- values(nc_cropped[[1]], na.rm = TRUE)
-    n_valid <- sum(!is.na(test_values))
-    log_message(paste0("  有效像元数: ", n_valid))
-    
-    # 保存
-    output_file <- file.path(output_dir, gsub("\\.nc$", ".tif", file_name))
-    log_message("  保存...")
-    writeRaster(nc_cropped, output_file, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
-    
-    cropped_size <- file.info(output_file)$size / 1024^2
-    processing_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
-    
-    log_message(paste0("  ✓ 完成 (", round(processing_time, 1), "秒, ",
-                      round(original_size, 1), "→", round(cropped_size, 1), " MB)"))
-    
-    # 记录
-    processing_log <- rbind(processing_log, data.frame(
-      file_name = file_name,
-      n_layers = n_layers,
-      original_size_mb = round(original_size, 2),
-      cropped_size_mb = round(cropped_size, 2),
-      processing_time_sec = round(processing_time, 2),
-      status = "Success",
-      stringsAsFactors = FALSE
-    ))
-    
-    # 清理内存
-    rm(nc_rast, nc_cropped)
-    gc()
-    
-  }, error = function(e) {
-    log_message(paste0("  ✗ 错误: ", e$message))
-    processing_log <<- rbind(processing_log, data.frame(
-      file_name = file_name,
-      n_layers = NA,
-      original_size_mb = NA,
-      cropped_size_mb = NA,
-      processing_time_sec = NA,
-      status = paste0("Error: ", e$message),
-      stringsAsFactors = FALSE
-    ))
-  })
+
+  tryCatch(
+    {
+      # 读取nc文件
+      log_message("  读取...")
+      nc_rast <- rast(nc_file)
+      n_layers <- nlyr(nc_rast)
+      original_size <- file.info(nc_file)$size / 1024^2
+
+      # 第一步：裁剪到边界范围（矩形）
+      log_message("  裁剪...")
+      nc_cropped <- crop(nc_rast, china_boundary)
+
+      # 第二步：掩膜保留边界内的数据
+      log_message("  掩膜...")
+      nc_cropped <- mask(nc_cropped, china_boundary)
+
+      # 检查数据
+      test_values <- values(nc_cropped[[1]], na.rm = TRUE)
+      n_valid <- sum(!is.na(test_values))
+      log_message(paste0("  有效像元数: ", n_valid))
+
+      # 保存
+      output_file <- file.path(output_dir, gsub("\\.nc$", ".tif", file_name))
+      log_message("  保存...")
+      writeRaster(nc_cropped, output_file, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+
+      cropped_size <- file.info(output_file)$size / 1024^2
+      processing_time <- as.numeric(difftime(Sys.time(), start_time, units = "secs"))
+
+      log_message(paste0(
+        "  ✓ 完成 (", round(processing_time, 1), "秒, ",
+        round(original_size, 1), "→", round(cropped_size, 1), " MB)"
+      ))
+
+      # 记录
+      processing_log <- rbind(processing_log, data.frame(
+        file_name = file_name,
+        n_layers = n_layers,
+        original_size_mb = round(original_size, 2),
+        cropped_size_mb = round(cropped_size, 2),
+        processing_time_sec = round(processing_time, 2),
+        status = "Success",
+        stringsAsFactors = FALSE
+      ))
+
+      # 清理内存
+      rm(nc_rast, nc_cropped)
+      gc()
+    },
+    error = function(e) {
+      log_message(paste0("  ✗ 错误: ", e$message))
+      processing_log <<- rbind(processing_log, data.frame(
+        file_name = file_name,
+        n_layers = NA,
+        original_size_mb = NA,
+        cropped_size_mb = NA,
+        processing_time_sec = NA,
+        status = paste0("Error: ", e$message),
+        stringsAsFactors = FALSE
+      ))
+    }
+  )
 }
 
 ################################################################################
@@ -182,5 +184,3 @@ log_message(paste0("总处理时间：", round(sum(processing_log$processing_tim
 log_message("========================================")
 
 log_message("脚本执行完毕！")
-
-

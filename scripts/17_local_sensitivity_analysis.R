@@ -16,12 +16,12 @@
 # 初始化环境
 rm(list = ls())
 gc()
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必要的包
 packages <- c("tidyverse", "mgcv", "ggplot2", "viridis", "patchwork")
-for(pkg in packages) {
-  if(!require(pkg, character.only = TRUE)) {
+for (pkg in packages) {
+  if (!require(pkg, character.only = TRUE)) {
     install.packages(pkg, dependencies = TRUE)
     library(pkg, character.only = TRUE)
   }
@@ -56,7 +56,7 @@ top_vars <- var_importance %>%
 
 # 仅保留在建模数据中存在的变量，避免列名不一致导致预测失败
 top_vars <- intersect(top_vars, env_vars)
-if(length(top_vars) == 0) {
+if (length(top_vars) == 0) {
   stop("未找到可用于敏感度/偏依赖的变量（请检查 importance_summary 与建模数据是否一致）")
 }
 
@@ -68,19 +68,22 @@ cat("\n步骤 2/5: 定义空间分组...\n")
 
 analysis_data <- model_data %>%
   dplyr::mutate(
-    lat_zone = cut(lat, 
-                   breaks = quantile(lat, probs = c(0, 1/3, 2/3, 1)),
-                   labels = c("South", "Central", "North"),
-                   include.lowest = TRUE)
+    lat_zone = cut(lat,
+      breaks = quantile(lat, probs = c(0, 1 / 3, 2 / 3, 1)),
+      labels = c("South", "Central", "North"),
+      include.lowest = TRUE
+    )
   ) %>%
-  dplyr::select(tidyselect::all_of(c("lon", "lat", "lat_zone", env_vars)))  # 包含所有环境变量，GAM需要
+  dplyr::select(tidyselect::all_of(c("lon", "lat", "lat_zone", env_vars))) # 包含所有环境变量，GAM需要
 
 # 清除用于预测的数据中的缺失，确保 mgcv::predict 正常
-analysis_data <- analysis_data[stats::complete.cases(analysis_data[, c("lon","lat", env_vars)]), ]
+analysis_data <- analysis_data[stats::complete.cases(analysis_data[, c("lon", "lat", env_vars)]), ]
 
 cat("  - 纬度带分布: 南 ", sum(analysis_data$lat_zone == "South"),
-    ", 中 ", sum(analysis_data$lat_zone == "Central"),
-    ", 北 ", sum(analysis_data$lat_zone == "North"), "\n", sep = "")
+  ", 中 ", sum(analysis_data$lat_zone == "Central"),
+  ", 北 ", sum(analysis_data$lat_zone == "North"), "\n",
+  sep = ""
+)
 
 # 3. 计算局部敏感度
 cat("\n步骤 3/5: 计算局部敏感度...\n")
@@ -89,10 +92,10 @@ cat("\n步骤 3/5: 计算局部敏感度...\n")
 compute_sensitivity <- function(data, model, var_name, delta = 0.01) {
   data_plus <- data
   data_plus[[var_name]] <- data[[var_name]] * (1 + delta)
-  
+
   pred_original <- predict(model, newdata = data, type = "response")
   pred_perturbed <- predict(model, newdata = data_plus, type = "response")
-  
+
   sensitivity <- (pred_perturbed - pred_original) / (data[[var_name]] * delta + 1e-10)
   return(sensitivity)
 }
@@ -100,26 +103,29 @@ compute_sensitivity <- function(data, model, var_name, delta = 0.01) {
 # 对每个变量计算敏感度
 sensitivity_results <- list()
 
-for(var in top_vars) {
+for (var in top_vars) {
   cat("  - ", var, "\n", sep = "")
-  
-  tryCatch({
-    sens <- compute_sensitivity(analysis_data, gam_model, var)
-    
-    sensitivity_results[[var]] <- data.frame(
-      variable = var,
-      sensitivity = sens,
-      lat_zone = analysis_data$lat_zone
-    )
-  }, error = function(e) {
-    cat("    ✗ 失败\n")
-  })
+
+  tryCatch(
+    {
+      sens <- compute_sensitivity(analysis_data, gam_model, var)
+
+      sensitivity_results[[var]] <- data.frame(
+        variable = var,
+        sensitivity = sens,
+        lat_zone = analysis_data$lat_zone
+      )
+    },
+    error = function(e) {
+      cat("    ✗ 失败\n")
+    }
+  )
 }
 
 all_sensitivity <- dplyr::bind_rows(sensitivity_results)
 
 # 检查是否有有效结果
-if(nrow(all_sensitivity) == 0) {
+if (nrow(all_sensitivity) == 0) {
   cat("  ✗ 警告: 没有成功计算的敏感度，跳过后续分析\n")
   cat("\n脚本终止: 敏感度计算失败\n\n")
   quit(status = 1)
@@ -135,8 +141,9 @@ sensitivity_summary <- all_sensitivity %>%
     .groups = "drop"
   )
 
-write.csv(sensitivity_summary, "output/17_local_sensitivity/sensitivity_summary.csv", 
-          row.names = FALSE)
+write.csv(sensitivity_summary, "output/17_local_sensitivity/sensitivity_summary.csv",
+  row.names = FALSE
+)
 cat("  ✓ 已保存: output/17_local_sensitivity/sensitivity_summary.csv\n")
 
 # 4. 计算偏依赖
@@ -150,17 +157,17 @@ compute_partial_dependence <- function(data, model, var_name, n_points = 100) {
     to = quantile(data[[var_name]], 0.99, na.rm = TRUE),
     length.out = n_points
   )
-  
+
   # 对每个值计算平均预测
   pd_values <- numeric(n_points)
-  
-  for(i in seq_along(var_range)) {
+
+  for (i in seq_along(var_range)) {
     pred_data <- data
     pred_data[[var_name]] <- var_range[i]
     preds <- predict(model, newdata = pred_data, type = "response")
     pd_values[i] <- mean(preds, na.rm = TRUE)
   }
-  
+
   return(data.frame(
     variable = var_name,
     x = var_range,
@@ -171,20 +178,24 @@ compute_partial_dependence <- function(data, model, var_name, n_points = 100) {
 # 对每个变量计算偏依赖
 pd_results <- list()
 
-for(var in top_vars) {
+for (var in top_vars) {
   cat("  - ", var, "\n", sep = "")
-  
-  tryCatch({
-    pd_results[[var]] <- compute_partial_dependence(analysis_data, gam_model, var)
-  }, error = function(e) {
-    cat("    ✗ 失败\n")
-  })
+
+  tryCatch(
+    {
+      pd_results[[var]] <- compute_partial_dependence(analysis_data, gam_model, var)
+    },
+    error = function(e) {
+      cat("    ✗ 失败\n")
+    }
+  )
 }
 
 all_pd <- dplyr::bind_rows(pd_results)
 
-write.csv(all_pd, "output/17_local_sensitivity/partial_dependence_data.csv", 
-          row.names = FALSE)
+write.csv(all_pd, "output/17_local_sensitivity/partial_dependence_data.csv",
+  row.names = FALSE
+)
 cat("  ✓ 已保存: output/17_local_sensitivity/partial_dependence_data.csv\n")
 
 # 5. 可视化
@@ -198,17 +209,21 @@ p_violin <- ggplot(all_sensitivity, aes(x = variable, y = sensitivity, fill = la
   geom_boxplot(position = position_dodge(0.8), width = 0.15, outlier.size = 0.3) +
   geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
   scale_fill_viridis(discrete = TRUE, option = "viridis", name = "Latitude Zone") +
-  labs(title = "Local Sensitivity Analysis by Latitude Zone",
-       subtitle = "GAM Model - Top 10 Variables",
-       x = "Environmental Variable",
-       y = expression("Sensitivity ("*partialdiff*"P/"*partialdiff*"X)")) +
+  labs(
+    title = "Local Sensitivity Analysis by Latitude Zone",
+    subtitle = "GAM Model - Top 10 Variables",
+    x = "Environmental Variable",
+    y = expression("Sensitivity (" * partialdiff * "P/" * partialdiff * "X)")
+  ) +
   viz_theme_nature(base_size = 8, title_size = 9) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6))
 
 ggsave("figures/17_local_sensitivity/sensitivity_violin.png",
-       plot = p_violin, width = 4, height = 3, dpi = 2400, bg = "transparent")
+  plot = p_violin, width = 4, height = 3, dpi = 2400, bg = "transparent"
+)
 ggsave("figures/17_local_sensitivity/sensitivity_violin.svg",
-       plot = p_violin, width = 4, height = 3, bg = "transparent")
+  plot = p_violin, width = 4, height = 3, bg = "transparent"
+)
 
 cat("      ✓ 小提琴图已保存\n")
 
@@ -218,42 +233,57 @@ cat("  (2) 偏依赖图...\n")
 p_pd <- ggplot(all_pd, aes(x = x, y = y)) +
   geom_line(color = "#2166AC", linewidth = 0.8) +
   geom_rug(sides = "b", alpha = 0.3, color = "gray50") +
-  facet_wrap(~ variable, scales = "free", ncol = 5) +
-  labs(title = "Partial Dependence Plots",
-       subtitle = "Marginal Effect of Each Variable on Occurrence Probability",
-       x = "Variable Value",
-       y = "Occurrence Probability") +
+  facet_wrap(~variable, scales = "free", ncol = 5) +
+  labs(
+    title = "Partial Dependence Plots",
+    subtitle = "Marginal Effect of Each Variable on Occurrence Probability",
+    x = "Variable Value",
+    y = "Occurrence Probability"
+  ) +
   viz_theme_nature(base_size = 7, title_size = 9) +
-  theme(axis.text = element_text(size = 5),
-        axis.title = element_text(size = 6),
-        strip.text = element_text(size = 6, face = "bold"))
+  theme(
+    axis.text = element_text(size = 5),
+    axis.title = element_text(size = 6),
+    strip.text = element_text(size = 6, face = "bold")
+  )
 
 ggsave("figures/17_local_sensitivity/partial_dependence.png",
-       plot = p_pd, width = 5, height = 2.5, dpi = 2400, bg = "transparent")
+  plot = p_pd, width = 5, height = 2.5, dpi = 2400, bg = "transparent"
+)
 ggsave("figures/17_local_sensitivity/partial_dependence.svg",
-       plot = p_pd, width = 5, height = 2.5, bg = "transparent")
+  plot = p_pd, width = 5, height = 2.5, bg = "transparent"
+)
 
 cat("      ✓ 偏依赖图已保存\n")
 
 # 5c. 敏感度热图
 cat("  (3) 敏感度热图...\n")
 
-p_heatmap <- ggplot(sensitivity_summary, 
-                    aes(x = lat_zone, y = variable, fill = mean_sensitivity)) +
+p_heatmap <- ggplot(
+  sensitivity_summary,
+  aes(x = lat_zone, y = variable, fill = mean_sensitivity)
+) +
   geom_tile(color = "white", linewidth = 0.5) +
-  geom_text(aes(label = sprintf("%.3f", mean_sensitivity)), 
-            color = "white", size = 2.5, fontface = "bold") +
-  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#D73027",
-                       midpoint = 0, name = "Mean\nSensitivity") +
-  labs(title = "Mean Sensitivity by Latitude Zone",
-       x = "Latitude Zone", y = "Variable") +
+  geom_text(aes(label = sprintf("%.3f", mean_sensitivity)),
+    color = "white", size = 2.5, fontface = "bold"
+  ) +
+  scale_fill_gradient2(
+    low = "#2166AC", mid = "white", high = "#D73027",
+    midpoint = 0, name = "Mean\nSensitivity"
+  ) +
+  labs(
+    title = "Mean Sensitivity by Latitude Zone",
+    x = "Latitude Zone", y = "Variable"
+  ) +
   viz_theme_nature(base_size = 8, title_size = 9) +
   theme(panel.grid = element_blank())
 
 ggsave("figures/17_local_sensitivity/sensitivity_heatmap.png",
-       plot = p_heatmap, width = 3, height = 3, dpi = 2400, bg = "transparent")
+  plot = p_heatmap, width = 3, height = 3, dpi = 2400, bg = "transparent"
+)
 ggsave("figures/17_local_sensitivity/sensitivity_heatmap.svg",
-       plot = p_heatmap, width = 3, height = 3, bg = "transparent")
+  plot = p_heatmap, width = 3, height = 3, bg = "transparent"
+)
 
 cat("      ✓ 热图已保存\n")
 

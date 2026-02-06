@@ -14,7 +14,7 @@ rm(list = ls())
 gc()
 
 # 设置工作目录
-setwd("E:/SDM01")
+setwd("E:/CausalSDMs")
 
 # 加载必需的R包
 required_packages <- c("tidyverse", "sf", "terra", "ggplot2")
@@ -30,19 +30,10 @@ for (pkg in required_packages) {
 log_message <- function(msg) {
   cat(paste0("[", Sys.time(), "] ", msg, "\n"))
 }
-
-################################################################################
-# 可调参数配置
-################################################################################
-
 # 空间稀疏化参数（单位：度，1度≈111km）
 # 作用：避免空间自相关，减少采样偏差，提高模型泛化能力
 # 方法：将区域划分为网格，每个网格只保留1个观测点
-SPATIAL_THINNING_GRID <- 0.09  # 约10km网格，适合全国尺度研究
-
-################################################################################
-# 创建输出目录
-################################################################################
+SPATIAL_THINNING_GRID <- 0.05 # 约5km网格，适合全国尺度研究
 
 if (!dir.exists("output")) dir.create("output")
 if (!dir.exists("output/01_data_preparation")) dir.create("output/01_data_preparation", recursive = TRUE)
@@ -52,9 +43,9 @@ log_message("======================================")
 log_message("开始处理Carassius auratus物种出现数据")
 log_message("======================================")
 
-################################################################################
+###############################################################################
 # 第一步：读取GBIF数据
-################################################################################
+###############################################################################
 
 log_message("\n步骤 1/8: 读取数据...")
 
@@ -87,8 +78,8 @@ occ <- occ_raw %>%
   ) %>%
   # 移除无效/缺失坐标与越界坐标
   filter(!is.na(lon) & !is.na(lat) &
-         lon >= -180 & lon <= 180 &
-         lat >= -90 & lat <= 90)
+    lon >= -180 & lon <= 180 &
+    lat >= -90 & lat <= 90)
 
 log_message(paste0("  - 移除缺失/无效坐标后: ", nrow(occ), " 条记录"))
 
@@ -171,8 +162,10 @@ log_message("  - 说明：对于SDM，同一坐标的多个记录不提供额外
 log_message("\n步骤 6/8: 空间稀疏化...")
 
 # 创建网格并稀疏化
-log_message(paste0("  - 使用网格大小: ", SPATIAL_THINNING_GRID, "° (约", 
-                  round(SPATIAL_THINNING_GRID * 111, 1), " km)"))
+log_message(paste0(
+  "  - 使用网格大小: ", SPATIAL_THINNING_GRID, "° (约",
+  round(SPATIAL_THINNING_GRID * 111, 1), " km)"
+))
 
 # 使用简单的网格方法稀疏化
 occ_thin <- occ_unique %>%
@@ -181,7 +174,7 @@ occ_thin <- occ_unique %>%
     grid_lat = floor(lat / SPATIAL_THINNING_GRID)
   ) %>%
   group_by(grid_lon, grid_lat) %>%
-  slice_sample(n = 1) %>%  # 每个网格随机保留1个点
+  slice_sample(n = 1) %>% # 每个网格随机保留1个点
   ungroup() %>%
   select(-grid_lon, -grid_lat)
 
@@ -210,8 +203,10 @@ species_counts <- occ_thin %>%
 log_message(paste0("    涉及物种数: ", nrow(species_counts)))
 log_message("    前5个物种:")
 for (i in seq_len(min(5, nrow(species_counts)))) {
-  log_message(paste0("      ", i, ". ", species_counts$species[i], " (", 
-                    species_counts$n[i], " 条)"))
+  log_message(paste0(
+    "      ", i, ". ", species_counts$species[i], " (",
+    species_counts$n[i], " 条)"
+  ))
 }
 
 # 年份统计
@@ -219,10 +214,12 @@ if ("year" %in% names(occ_thin)) {
   year_counts <- occ_thin %>%
     filter(!is.na(year)) %>%
     count(year, sort = TRUE)
-  
+
   if (nrow(year_counts) > 0) {
-    log_message(paste0("    时间跨度: ", min(year_counts$year, na.rm = TRUE), 
-                      " - ", max(year_counts$year, na.rm = TRUE)))
+    log_message(paste0(
+      "    时间跨度: ", min(year_counts$year, na.rm = TRUE),
+      " - ", max(year_counts$year, na.rm = TRUE)
+    ))
   }
 }
 
@@ -262,8 +259,10 @@ cat("  物种数:", nrow(species_counts), "\n")
 cat("  经度范围:", round(lon_range[1], 2), "~", round(lon_range[2], 2), "\n")
 cat("  纬度范围:", round(lat_range[1], 2), "~", round(lat_range[2], 2), "\n\n")
 cat("处理参数:\n")
-cat("  空间稀疏化网格:", SPATIAL_THINNING_GRID, "° (约", 
-    round(SPATIAL_THINNING_GRID * 111, 1), " km)\n")
+cat(
+  "  空间稀疏化网格:", SPATIAL_THINNING_GRID, "° (约",
+  round(SPATIAL_THINNING_GRID * 111, 1), " km)\n"
+)
 cat("  研究区域: 中国境内\n")
 sink()
 log_message(paste0("  ✓ 已保存处理日志: ", log_file))
@@ -279,56 +278,62 @@ log_message(paste0("  ✓ 已保存物种统计: ", species_stats))
 
 log_message("\n生成简单可视化...")
 
-tryCatch({
-  # 读取中国边界并转换为sf对象（用于绘图）
-  china_sf <- st_as_sf(china_boundary)
-  
-  # 动态物种名（用于标题），默认取出现频次最高的第一个物种
-  species_label <- tryCatch({
-    if (exists("species_counts") && nrow(species_counts) > 0) species_counts$species[1] else "Target species"
-  }, error = function(e) "Target species")
-  
-  # 绘制分布点图 - Nature期刊风格
-  p <- ggplot() +
-    geom_sf(data = china_sf, fill = "gray95", color = "black", size = 0.3) +
-    geom_point(data = occ_thin, aes(x = lon, y = lat), 
-               color = "#D62728", size = 1.5, alpha = 0.7) +
-    theme_minimal(base_family = "Arial") +
-    theme(
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank(),
-      panel.background = element_rect(fill = "transparent", color = NA),
-      plot.background = element_rect(fill = "transparent", color = NA),
-      panel.border = element_rect(color = "black", fill = NA, size = 0.5),
-      plot.title = element_text(size = 14, face = "bold"),
-      axis.title = element_text(size = 12),
-      axis.text = element_text(size = 10)
-    ) +
-    labs(
-      title = paste0(species_label, " Species Occurrence in China"),
-      x = "Longitude (°E)",
-      y = "Latitude (°N)",
-      caption = paste0("n = ", nrow(occ_thin), " occurrence records")
-    ) +
-    # 根据中国边界自动确定范围（参考viz_00脚本）
-    coord_sf(expand = FALSE)
-  
-  # 保存PNG格式（透明背景，2400 dpi）
-  ggsave(
-    filename = "figures/01_data_preparation/species_occurrence_map.png",
-    plot = p,
-    width = 10,
-    height = 8,
-    dpi = 2400,
-    bg = "transparent"
-  )
-  
-  log_message("  ✓ 已保存分布图: figures/01_data_preparation/species_occurrence_map.png")
-  
-  
-}, error = function(e) {
-  log_message(paste0("  - 可视化失败: ", e$message))
-})
+tryCatch(
+  {
+    # 读取中国边界并转换为sf对象（用于绘图）
+    china_sf <- st_as_sf(china_boundary)
+
+    # 动态物种名（用于标题），默认取出现频次最高的第一个物种
+    species_label <- tryCatch(
+      {
+        if (exists("species_counts") && nrow(species_counts) > 0) species_counts$species[1] else "Target species"
+      },
+      error = function(e) "Target species"
+    )
+
+    # 绘制分布点图 - Nature期刊风格
+    p <- ggplot() +
+      geom_sf(data = china_sf, fill = "gray95", color = "black", size = 0.3) +
+      geom_point(
+        data = occ_thin, aes(x = lon, y = lat),
+        color = "#D62728", size = 1.5, alpha = 0.7
+      ) +
+      theme_minimal(base_family = "Arial") +
+      theme(
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.border = element_rect(color = "black", fill = NA, size = 0.5),
+        plot.title = element_text(size = 14, face = "bold"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 10)
+      ) +
+      labs(
+        title = paste0(species_label, " Species Occurrence in China"),
+        x = "Longitude (°E)",
+        y = "Latitude (°N)",
+        caption = paste0("n = ", nrow(occ_thin), " occurrence records")
+      ) +
+      # 根据中国边界自动确定范围（参考viz_00脚本）
+      coord_sf(expand = FALSE)
+
+    # 保存PNG格式（透明背景，2400 dpi）
+    ggsave(
+      filename = "figures/01_data_preparation/species_occurrence_map.png",
+      plot = p,
+      width = 10,
+      height = 8,
+      dpi = 2400,
+      bg = "transparent"
+    )
+
+    log_message("  ✓ 已保存分布图: figures/01_data_preparation/species_occurrence_map.png")
+  },
+  error = function(e) {
+    log_message(paste0("  - 可视化失败: ", e$message))
+  }
+)
 
 ################################################################################
 # 完成
@@ -342,4 +347,3 @@ log_message(paste0("输出文件夹: output/01_data_preparation/"))
 log_message("======================================\n")
 
 log_message("脚本执行完毕！")
-
