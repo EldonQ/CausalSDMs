@@ -1,0 +1,171 @@
+======================================================================
+  CAST v3 Single-Species Pipeline: swi06 [SWI]
+======================================================================
+
+  Train: 15822 (P=5822, BG=10000, prev=0.368)
+  Test:  10013 (prev=0.694)
+
+═══ Step 1: VIF Filtering ═══
+  13 → 12 variables (threshold=10)
+
+═══ Step 2: DAG Learning (HC, R=200) ═══
+  37 strong edges (density=0.56)
+
+═══ Step 3: ATE Estimation (DML, 2-fold CF) ═══
+  bcc      ATE=-0.0331 SE=0.0144 p=0.0217  *
+  calc     ATE=-0.0156 SE=0.0088 p=0.0747 
+  ccc      ATE=+0.3477 SE=0.0102 p=0.0000  *
+  ddeg     ATE=+0.0434 SE=0.0132 p=0.0010  *
+  nutri    ATE=+0.0022 SE=0.0127 p=0.8602 
+  pday     ATE=+0.1043 SE=0.0095 p=0.0000  *
+  precyy   ATE=+0.0090 SE=0.0103 p=0.3838 
+  sfroyy   ATE=-0.0020 SE=0.0189 p=0.9170 
+  slope    ATE=+0.0173 SE=0.0099 p=0.0827 
+  sradyy   ATE=-0.0056 SE=0.0073 p=0.4373 
+  swb      ATE=-0.0521 SE=0.0126 p=0.0000  *
+  topo     ATE=+0.0167 SE=0.0068 p=0.0141  *
+  6/12 significant (p<0.05)
+
+═══ Step 4: Adaptive CAST Screening v2 ═══
+  Adaptive weights: w_dag=0.216 w_ate=0.375 w_imp=0.409
+  12 → 5 CAST variables (kmeans(high=1)+floor(5))
+  Screening scores:
+   variable score_dag    score_ate  score_imp score_total
+1       ccc 0.4285714 1.000000e+00 1.00000000 0.876623377
+2       swb 1.0000000 1.449199e-01 0.14688627 0.330343879
+3      ddeg 0.4285714 1.193572e-01 0.35164562 0.281146462
+4    precyy 1.0000000 2.819851e-03 0.14680585 0.277023473
+5      pday 0.4285714 2.960117e-01 0.14144375 0.261400200
+6      topo 0.8571429 2.620584e-02 0.08641993 0.230245731
+7       bcc 0.1428571 4.990265e-02 0.22919551 0.143319450
+8     nutri 0.4285714 1.654921e-05 0.12143479 0.142216543
+9     slope 0.1428571 1.595314e-02 0.18759535 0.113570134
+10   sfroyy 0.2857143 0.000000e+00 0.03699448 0.076822419
+11   sradyy 0.1428571 1.266948e-03 0.08809157 0.067356722
+12     calc 0.0000000 1.479806e-02 0.00000000 0.005549273
+
+═══ Step 5: Causal Role Grouping ═══
+  variable out inp role_score    group
+1   precyy   7   0   8.000000     Root
+2      swb   7   2   2.333333     Root
+3     pday   3   1   1.500000 Mediator
+4      ccc   3   2   1.000000 Mediator
+5     ddeg   3   3   0.750000 Terminal
+  DAG edges among CAST vars: 6
+  Hidden size: 40
+
+═══ Step 6: Model Training & Evaluation ═══
+  A: Full-var baselines (12 vars)
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  DAG edges among CAST vars: 6
+  Hidden size: 40
+
+═══ Step 6: Model Training & Evaluation ═══
+  A: Full-var baselines (12 vars)
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  Hidden size: 40
+
+═══ Step 6: Model Training & Evaluation ═══
+  A: Full-var baselines (12 vars)
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+
+═══ Step 6: Model Training & Evaluation ═══
+  A: Full-var baselines (12 vars)
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  A: Full-var baselines (12 vars)
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  CI-MLP features: 5 base + 6 interactions = 11 total
+  B: CAST-screened baselines (5 vars)
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  CI-MLP features: 5 base + 6 interactions = 11 total
+  Interactions: int_swb_ccc, int_swb_ddeg, int_precyy_ccc, int_precyy_swb, int_precyy_pday, int_pday_ddeg
+
+  C: CI-MLP (5 vars + 6 DAG interaction features)
+  CI-MLP features: 5 base + 6 interactions = 11 total
+  Interactions: int_swb_ccc, int_swb_ddeg, int_precyy_ccc, int_precyy_swb, int_precyy_pday, int_pday_ddeg
+
+  --- Group C: CI-MLP (CAST vars + DAG interactions) ---
+    CI-MLP run 1: AUC=0.7531 TSS=0.3643
+  CI-MLP features: 5 base + 6 interactions = 11 total
+  Interactions: int_swb_ccc, int_swb_ddeg, int_precyy_ccc, int_precyy_swb, int_precyy_pday, int_pday_ddeg
+
+  --- Group C: CI-MLP (CAST vars + DAG interactions) ---
+    CI-MLP run 1: AUC=0.7531 TSS=0.3643
+  Interactions: int_swb_ccc, int_swb_ddeg, int_precyy_ccc, int_precyy_swb, int_precyy_pday, int_pday_ddeg
+
+  --- Group C: CI-MLP (CAST vars + DAG interactions) ---
+    CI-MLP run 1: AUC=0.7531 TSS=0.3643
+    CI-MLP run 2: AUC=0.7542 TSS=0.3815
+    CI-MLP run 3: AUC=0.7455 TSS=0.3640
+  --- Group C: CI-MLP (CAST vars + DAG interactions) ---
+    CI-MLP run 1: AUC=0.7531 TSS=0.3643
+    CI-MLP run 2: AUC=0.7542 TSS=0.3815
+    CI-MLP run 3: AUC=0.7455 TSS=0.3640
+    CI-MLP run 4: AUC=0.7576 TSS=0.3760
+    CI-MLP run 2: AUC=0.7542 TSS=0.3815
+    CI-MLP run 3: AUC=0.7455 TSS=0.3640
+    CI-MLP run 4: AUC=0.7576 TSS=0.3760
+    CI-MLP run 5: AUC=0.7498 TSS=0.3604
+    CI-MLP run 3: AUC=0.7455 TSS=0.3640
+    CI-MLP run 4: AUC=0.7576 TSS=0.3760
+    CI-MLP run 5: AUC=0.7498 TSS=0.3604
+    CI-MLP run 4: AUC=0.7576 TSS=0.3760
+    CI-MLP run 5: AUC=0.7498 TSS=0.3604
+    CI-MLP run 5: AUC=0.7498 TSS=0.3604
+
+  --- Group B: FlatNN_cast (CAST vars, no structure) ---
+    FlatNN_cast run 1: AUC=0.7627 TSS=0.3757
+    FlatNN_cast run 2: AUC=0.7587 TSS=0.3711
+    FlatNN_cast run 3: AUC=0.7605 TSS=0.3809
+    FlatNN_cast run 4: AUC=0.7534 TSS=0.3682
+    FlatNN_cast run 5: AUC=0.7577 TSS=0.3726
+
+  --- Group A: FlatNN_full (all post-VIF vars) ---
+    FlatNN_full run 1: AUC=0.7002 TSS=0.3125
+    FlatNN_full run 2: AUC=0.6984 TSS=0.3090
+    FlatNN_full run 3: AUC=0.7161 TSS=0.3263
+    FlatNN_full run 4: AUC=0.6957 TSS=0.2970
+    FlatNN_full run 5: AUC=0.6928 TSS=0.2901
+
+  --- Traditional SDM Baselines ---
+    RF_cast: AUC=0.7278
+    RF_full: AUC=0.7142
+    Maxent_cast: AUC=0.7670
+    Maxent_full: AUC=0.7088
+    BRT_cast: AUC=0.7525
+    BRT_full: AUC=0.7111
+    GAM_cast: AUC=0.7617
+    GAM_full FAILED: A term has fewer unique covariate combinations than specifie
+
+╔═══════════════════════════════════════════════════════════════════════════╗ 
+║  CAST v3 Pipeline Complete: swi06 [SWI]                                    ║
+╠═══════════════════════════════════════════════════════════════════════════╣ 
+║  VIF:       13 → 12 vars                                                ║
+║  DAG:       37 edges (density=0.56)                                     ║
+║  DAG:       37 edges (density=0.56)                                     ║
+║  ATE:       6/12 significant                                            ║
+║  Screening: 12 → 5 CAST vars                                           ║
+║  Screening: 12 → 5 CAST vars                                           ║
+║  CI-MLP:    5 base + 6 interactions = 11 features                      ║
+╠═══════════════════════════════════════════════════════════════════════════╣
+║  A: Full-variable baselines                                             ║
+║    RF_full        AUC=0.7142±0.0000  TSS=0.3290±0.0000  (12v)             ║
+║    BRT_full       AUC=0.7111±0.0000  TSS=0.3167±0.0000  (12v)             ║
+║    Maxent_full    AUC=0.7088±0.0000  TSS=0.3293±0.0000  (12v)             ║
+║    FlatNN_full    AUC=0.7006±0.0091  TSS=0.3070±0.0141  (12v)             ║
+║  B: CAST-screened baselines                                             ║
+║    Maxent_cast    AUC=0.7670±0.0000  TSS=0.4097±0.0000  (5v)             ║
+║    GAM_cast       AUC=0.7617±0.0000  TSS=0.3999±0.0000  (5v)             ║
+║    FlatNN_cast    AUC=0.7586±0.0035  TSS=0.3737±0.0048  (5v)             ║
+║    BRT_cast       AUC=0.7525±0.0000  TSS=0.3788±0.0000  (5v)             ║
+║    RF_cast        AUC=0.7278±0.0000  TSS=0.3461±0.0000  (5v)             ║
+║  C: CI-MLP (CAST + DAG interactions)                                      ║
+║  ★ CI_MLP         AUC=0.7520±0.0046  TSS=0.3692±0.0090  (5v+6)           ║
+║                                                                           ║
+║  Structure effect: CI-MLP vs FlatNN_cast = -0.0065 AUC            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
