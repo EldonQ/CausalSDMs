@@ -755,6 +755,64 @@ cat("\n  --- CAST (all vars ATE-weighted + DAG interactions) ---\n")
     ))
 }
 
+# ---- MLP_ATE（消融：仅ATE加权，无DAG交互） ----
+ate_only_train_info <- build_cast_features(
+    X_train_full_sc, selected_vars, character(0), strong_edges, ate_results, boot_str
+)
+ate_only_test_info <- build_cast_features(
+    X_test_full_sc, selected_vars, character(0), strong_edges, ate_results, boot_str
+)
+X_tr_ate <- ate_only_train_info$data[-val_idx, ]
+X_val_ate <- ate_only_train_info$data[val_idx, ]
+X_test_ate <- ate_only_test_info$data
+hidden_size_ate <- max(32L, min(128L, as.integer(ncol(X_tr_ate) * 8)))
+
+cat("\n  --- MLP_ATE (ATE-weighted only, no DAG interactions) [ablation] ---\n")
+{
+    aucs <- numeric(n_runs)
+    tsss <- numeric(n_runs)
+    for (ri in 1:n_runs) {
+        torch_manual_seed(seeds[ri])
+        set.seed(seeds[ri])
+        tryCatch(
+            {
+                ds <- flat_dataset(X_tr_ate, y_tr)
+                dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE, drop_last = TRUE)
+                vt <- torch_tensor(as.matrix(X_val_ate), dtype = torch_float())
+                m <- MLP(ncol(X_tr_ate), hidden_size_ate, 0.2)
+                res <- train_nn(m, dl,
+                    function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()),
+                    y_val,
+                    epochs = 200, patience = 20, focal_alpha = focal_alpha
+                )
+                res$model$eval()
+                with_no_grad({
+                    tt <- torch_tensor(as.matrix(X_test_ate), dtype = torch_float())
+                    pred <- as.numeric(torch_sigmoid(res$model(tt))$squeeze()$cpu())
+                })
+                ev <- evaluate_model(pred, y_test_all)
+                aucs[ri] <- ev["auc"]
+                tsss[ri] <- ev["tss"]
+                cat(sprintf("    MLP_ATE run %d: AUC=%.4f TSS=%.4f\n", ri, ev["auc"], ev["tss"]))
+            },
+            error = function(e) {
+                cat(sprintf("    MLP_ATE run %d FAILED: %s\n", ri, e$message))
+                aucs[ri] <<- NA
+                tsss[ri] <<- NA
+            }
+        )
+    }
+    sp_results <- rbind(sp_results, data.frame(
+        region = region, species = sp, model = "MLP_ATE", var_set = "full+ate",
+        n_vars = length(selected_vars), n_interactions = 0L,
+        n_features_total = ncol(X_tr_ate),
+        n_dag_edges = NA, dag_density = dag_density,
+        auc_mean = mean(aucs, na.rm = TRUE), auc_sd = sd(aucs, na.rm = TRUE),
+        tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE),
+        n_success = sum(!is.na(aucs)), stringsAsFactors = FALSE
+    ))
+}
+
 # ---- MLP（全变量，无因果增强） ----
 cat("\n  --- MLP (all post-VIF variables, no causal) ---\n")
 {
