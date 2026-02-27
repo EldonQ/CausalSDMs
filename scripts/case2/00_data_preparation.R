@@ -39,8 +39,17 @@ library(tidyverse)
 
 # ---- Configuration ----
 # Regions to process (all 6 disdat regions)
+# AWT和NSW有多个group，需分组加载PA数据
 regions <- c("AWT", "CAN", "NSW", "NZ", "SA", "SWI")
-min_po <- 200 # Minimum PO records required per species
+region_groups <- list(
+    AWT = c("bird", "plant"),
+    CAN = NULL,
+    NSW = c("ba", "db", "nb", "ot", "ou", "rt", "ru", "sr"),
+    NZ  = NULL,
+    SA  = NULL,
+    SWI = NULL
+)
+min_po <- 200
 
 cat("======================================================================\n")
 cat("  CAST v3 Data Preparation — disdat 6 Regions\n")
@@ -52,15 +61,49 @@ all_regions_summary <- data.frame()
 for (region in regions) {
     cat(sprintf("\n═══ Region: %s ═══\n", region))
 
-    # Create output directories
     dir.create(sprintf("output/case2/%s", region), recursive = TRUE, showWarnings = FALSE)
     dir.create(sprintf("figures/case2/%s", region), recursive = TRUE, showWarnings = FALSE)
 
     # ---- 1. Load disdat data ----
-    po <- disdat::disPo(region) # Presence-only records (with env vars)
-    bg <- disdat::disBg(region) # Background points (with env vars)
-    pa <- disdat::disPa(region) # Independent PA evaluation (species columns)
-    env <- disdat::disEnv(region) # PA site environmental variables
+    po <- disdat::disPo(region)
+    bg <- disdat::disBg(region)
+
+    # PA数据：有group的区域需逐group加载后合并
+    groups <- region_groups[[region]]
+    if (is.null(groups)) {
+        pa <- disdat::disPa(region)
+        env <- disdat::disEnv(region)
+    } else {
+        pa_list <- lapply(groups, function(g) {
+            tryCatch(disdat::disPa(region, group = g),
+                error = function(e) NULL)
+        })
+        pa_list <- pa_list[!sapply(pa_list, is.null)]
+        # 合并所有group的PA（取共有列的并集）
+        if (length(pa_list) > 0) {
+            all_cols <- unique(unlist(lapply(pa_list, names)))
+            pa_list <- lapply(pa_list, function(df) {
+                missing <- setdiff(all_cols, names(df))
+                for (m in missing) df[[m]] <- NA
+                df[, all_cols]
+            })
+            pa <- do.call(rbind, pa_list)
+        } else {
+            cat(sprintf("  ⚠ No PA data loaded for %s → skip\n", region))
+            next
+        }
+        env_list <- lapply(groups, function(g) {
+            tryCatch(disdat::disEnv(region, group = g),
+                error = function(e) NULL)
+        })
+        env_list <- env_list[!sapply(env_list, is.null)]
+        if (length(env_list) > 0) {
+            env <- do.call(rbind, env_list)
+            env <- env[!duplicated(env), ]
+        } else {
+            env <- data.frame()
+        }
+    }
 
     cat(sprintf(
         "  PO: %d rows | BG: %d rows | PA: %d rows\n",

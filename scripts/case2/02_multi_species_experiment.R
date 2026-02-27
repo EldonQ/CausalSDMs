@@ -3,25 +3,18 @@
 # CAST v3 Multi-Region Multi-Species Experiment
 # disdat benchmark — 6 regions, 226 species
 #
-# CAST: Causal Analysis for Species distribution modeling Transfer
+# CAST: Causal Analysis for Species distribution modelling Toolkit
 #
-# Pipeline per species:
+# Pipeline per species (与01_cast_pipeline.R完全一致):
 #   Step 1: VIF filtering (threshold=10)
-#   Step 2: DAG learning (HC bootstrap R=200, strength≥0.7, direction≥0.6)
+#   Step 2: DAG learning (HC bootstrap R=100, strength≥0.7, direction≥0.6)
 #   Step 3: ATE estimation (DML 2-fold cross-fitting)
-#   Step 4: Adaptive CAST Screening v2
-#   Step 5: Causal Role Grouping + DAG adjacency matrix
-#   Step 6: Three-group modeling:
-#       A: Full-variable baselines (post-VIF)
-#       B: CAST-screened baselines (no structure)
-#       C: CI-MLP (Causally-Informed MLP with DAG feature interactions)
-#
-# CI-MLP innovation over CINN-SDM:
-#   - Does NOT use message passing (avoids DAG density issue)
-#   - Creates DAG-guided pairwise interaction features (x_i * x_j for i→j)
-#   - ATE-weighted feature scaling (|ATE| as learnable initialization)
-#   - Same MLP backbone as FlatNN → fair comparison
-#   - DAG info enters as extra features, not architectural constraints
+#   Step 4: Adaptive CAST Screening v2 (用于解释，不限制建模)
+#   Step 5: Causal Role Grouping
+#   Step 6: Unified comparison table:
+#       CAST (全变量ATE加权 + DAG交互特征, CI-MLP架构)
+#       MLP  (全变量, 标准MLP)
+#       RF / Maxent / BRT / GAM (全变量)
 #
 # Prerequisite: Run 00_data_preparation.R first
 ################################################################################
@@ -43,8 +36,8 @@ if (!torch_is_installed()) torch::install_torch()
 # ---- Configuration ----
 # Which regions to run (default: all 6)
 REGIONS <- c("AWT", "CAN", "NSW", "NZ", "SA", "SWI")
-n_runs <- 5
-seeds <- c(42, 71, 103, 137, 251)
+n_runs <- 3
+seeds <- c(42, 71, 103)
 
 # ==============================================================================
 # Utility Functions
@@ -172,48 +165,41 @@ build_adj_matrix <- function(cast_vars, strong_edges) {
 }
 
 # ==============================================================================
-# Build DAG Interaction Features for CI-MLP
+# CAST特征工程：全变量ATE加权 + 仅筛选变量间的DAG交互（与01完全一致）
 # ==============================================================================
-# Creates pairwise interaction features ONLY for edges in the DAG
-# Plus ATE-weighted feature scaling
-build_cimlp_features <- function(X, cast_vars, adj_matrix, ate_results,
-                                 boot_str = NULL) {
-    X_base <- X[, cast_vars, drop = FALSE]
-    p <- length(cast_vars)
+# 基础特征：all_vars（全变量ATE加权）；交互：仅 cast_vars 之间的DAG边
+build_cast_features <- function(X_full_sc, all_vars, cast_vars, strong_edges,
+                                ate_results, boot_str = NULL) {
+    X_base <- X_full_sc[, all_vars, drop = FALSE]
+    p <- length(all_vars)
 
-    # 1. ATE-weighted scaling: multiply each feature by its |ATE| importance
+    # 1. ATE加权: 对所有变量施加因果权重（显著变量放大）
     ate_weights <- rep(1.0, p)
-    names(ate_weights) <- cast_vars
-    for (v in cast_vars) {
+    names(ate_weights) <- all_vars
+    for (v in all_vars) {
         idx <- which(ate_results$variable == v)
         if (length(idx) > 0 && ate_results$significant[idx[1]]) {
             ate_weights[v] <- 1.0 + abs(ate_results$coef[idx[1]])
         }
     }
     X_weighted <- X_base
-    for (v in cast_vars) {
+    for (v in all_vars) {
         X_weighted[[v]] <- X_weighted[[v]] * ate_weights[v]
     }
 
-    # 2. DAG-guided pairwise interactions (only for edges i→j)
+    # 2. DAG导向交互: 仅筛选变量(cast_vars)之间的边，避免噪声交互过拟合
     interaction_cols <- list()
     edge_names <- c()
-
-    for (i in 1:p) {
-        for (j in 1:p) {
-            if (i != j && adj_matrix[cast_vars[i], cast_vars[j]] > 0) {
-                col_name <- paste0("int_", cast_vars[i], "_", cast_vars[j])
-                # Use bootstrap strength as edge weight if available
-                edge_weight <- 1.0
-                if (!is.null(boot_str)) {
-                    edge_idx <- which(boot_str$from == cast_vars[i] &
-                        boot_str$to == cast_vars[j])
-                    if (length(edge_idx) > 0) {
-                        edge_weight <- boot_str$strength[edge_idx[1]]
-                    }
-                }
-                interaction_cols[[col_name]] <- X_base[[cast_vars[i]]] *
-                    X_base[[cast_vars[j]]] * edge_weight
+    if (nrow(strong_edges) > 0 && length(cast_vars) > 0) {
+        for (k in 1:nrow(strong_edges)) {
+            from_v <- strong_edges$from[k]
+            to_v <- strong_edges$to[k]
+            if (from_v %in% cast_vars && to_v %in% cast_vars &&
+                from_v %in% all_vars && to_v %in% all_vars) {
+                col_name <- paste0("int_", from_v, "_", to_v)
+                edge_weight <- strong_edges$strength[k]
+                interaction_cols[[col_name]] <- X_base[[from_v]] *
+                    X_base[[to_v]] * edge_weight
                 edge_names <- c(edge_names, col_name)
             }
         }
@@ -227,11 +213,8 @@ build_cimlp_features <- function(X, cast_vars, adj_matrix, ate_results,
     }
 
     list(
-        data = X_out,
-        n_base = p,
-        n_interactions = length(interaction_cols),
-        n_total = ncol(X_out),
-        ate_weights = ate_weights,
+        data = X_out, n_base = p, n_interactions = length(interaction_cols),
+        n_total = ncol(X_out), ate_weights = ate_weights,
         interaction_names = edge_names
     )
 }
@@ -239,19 +222,13 @@ build_cimlp_features <- function(X, cast_vars, adj_matrix, ate_results,
 # ==============================================================================
 # CI-MLP Architecture (Causally-Informed MLP)
 # ==============================================================================
-# Key innovation: DAG information enters as FEATURES, not architecture constraints.
-# - Same MLP backbone as FlatNN → perfectly fair parameter comparison
-# - DAG-guided interaction features: x_i * x_j only for DAG edges i→j
-# - ATE-weighted feature scaling: significant causal variables are amplified
-# - Why better than CINN-SDM's message passing:
-#     * No DAG density issue (high density → more features, not worse structure)
-#     * No auxiliary loss competing for model capacity
-#     * Same architecture as FlatNN → any improvement is purely from causal features
+# CAST的核心神经网络: 因果信息以特征形式注入，而非架构约束
+# - 与MLP共享完全相同的骨架结构 → 公平对比
+# - DAG导向的交互特征: 仅对DAG边 i→j 构建 x_i * x_j
+# - ATE加权特征缩放: 因果显著变量被放大
 #
 CI_MLP <- nn_module("CI_MLP",
     initialize = function(n_input, hidden = 64, dropout = 0.2) {
-        # Identical architecture to FlatNN — any performance difference
-        # comes SOLELY from the DAG-guided input features
         self$net <- nn_sequential(
             nn_linear(n_input, hidden), nn_layer_norm(hidden),
             nn_silu(), nn_dropout(dropout),
@@ -268,8 +245,8 @@ CI_MLP <- nn_module("CI_MLP",
     forward = function(x) self$net(x)
 )
 
-# FlatNN: identical architecture, no causal features
-FlatNN <- nn_module("FlatNN",
+# MLP: 标准多层感知机（无因果特征）
+MLP <- nn_module("MLP",
     initialize = function(n_input, hidden = 64, dropout = 0.2) {
         self$net <- nn_sequential(
             nn_linear(n_input, hidden), nn_layer_norm(hidden),
@@ -420,13 +397,14 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw, gam_vars = NULL) {
 # Main Loop — across all regions and species
 # ==============================================================================
 cat("======================================================================\n")
-cat(sprintf("  CAST v3 Multi-Region Experiment: %d regions\n", length(REGIONS)))
-cat("  CI-MLP (Causally-Informed MLP) | Adaptive CAST Screening\n")
+cat(sprintf("  CAST Multi-Region Experiment: %d regions\n", length(REGIONS)))
+cat("  Models: CAST, MLP, RF, Maxent, BRT, GAM\n")
 cat("======================================================================\n\n")
 
 all_results <- data.frame()
 all_ate_results <- data.frame()
 all_dag_info <- data.frame()
+all_dag_edges <- data.frame()
 all_screening <- data.frame()
 all_role_info <- data.frame()
 
@@ -502,7 +480,7 @@ for (region in REGIONS) {
         }
         set.seed(42)
         boot_str <- bnlearn::boot.strength(env_for_dag,
-            R = 200, algorithm = "hc",
+            R = 100, algorithm = "hc",
             algorithm.args = list(score = "bic-g")
         )
         strong_edges <- boot_str %>% filter(strength >= 0.7, direction >= 0.6)
@@ -517,6 +495,14 @@ for (region in REGIONS) {
             dag_density = dag_density, n_vars_after_vif = length(selected_vars),
             stringsAsFactors = FALSE
         ))
+
+        # 保存逐物种DAG边信息（供03出图: Fig S8 跨物种DAG边一致性）
+        if (nrow(strong_edges) > 0) {
+            sp_edges <- strong_edges %>%
+                select(from, to, strength, direction) %>%
+                mutate(region = region, species = sp)
+            all_dag_edges <- rbind(all_dag_edges, sp_edges)
+        }
 
         # --- Step 3: ATE ---
         Y_full <- train_data$presence
@@ -581,7 +567,7 @@ for (region in REGIONS) {
             ) %>%
             arrange(desc(score_total))
 
-        min_keep_n <- max(5L, ceiling(length(selected_vars) * 0.4))
+        min_keep_n <- max(5L, ceiling(length(selected_vars) * 0.5))
         if (length(unique(screening_df$score_total)) >= 2) {
             km <- kmeans(screening_df$score_total, centers = 2, nstart = 10)
             high_cluster <- which.max(km$centers)
@@ -602,42 +588,23 @@ for (region in REGIONS) {
         screening_df$w_imp <- w_imp
         all_screening <- rbind(all_screening, screening_df)
 
-        # --- Step 5: Causal Roles + Adjacency ---
+        # --- Step 5: Causal Roles ---
         role_df <- assign_causal_roles(cast_vars, strong_edges, n_groups = 3)
-        adj_matrix <- build_adj_matrix(cast_vars, strong_edges)
-        n_dag_edges_cast <- sum(adj_matrix)
         role_df$species <- sp
         role_df$region <- region
         all_role_info <- rbind(all_role_info, role_df)
 
-        hidden_size <- max(32L, min(128L, as.integer(length(cast_vars) * 8)))
-
         cat(sprintf(
-            "    VIF:%d→%d | DAG:%d(d=%.2f) | ATE:%d/%d | CAST:%d | CI-edges:%d\n",
+            "    VIF:%d→%d | DAG:%d(d=%.2f) | ATE:%d/%d | screened:%d\n",
             length(env_cols), length(selected_vars), nrow(strong_edges), dag_density,
-            n_sig, nrow(ate_results), length(cast_vars), n_dag_edges_cast
+            n_sig, nrow(ate_results), length(cast_vars)
         ))
 
         # ═══ Step 6: Modeling ═══
         y_train_all <- train_data$presence
         y_test_all <- test_data$presence
 
-        # Prepare CAST data
-        X_train_cast <- train_data[, cast_vars, drop = FALSE]
-        X_test_cast <- test_data[, cast_vars, drop = FALSE]
-        X_means_cast <- colMeans(X_train_cast, na.rm = TRUE)
-        X_sds_cast <- apply(X_train_cast, 2, sd, na.rm = TRUE)
-        X_sds_cast[X_sds_cast < 1e-10] <- 1
-        X_train_cast_sc <- as.data.frame(scale(X_train_cast,
-            center = X_means_cast, scale = X_sds_cast
-        ))
-        X_test_cast_sc <- as.data.frame(scale(X_test_cast,
-            center = X_means_cast, scale = X_sds_cast
-        ))
-        X_train_cast_sc[is.na(X_train_cast_sc)] <- 0
-        X_test_cast_sc[is.na(X_test_cast_sc)] <- 0
-
-        # Prepare full data
+        # 标准化全变量集（所有模型共用）
         X_train_full <- train_data[, selected_vars, drop = FALSE]
         X_test_full <- test_data[, selected_vars, drop = FALSE]
         X_means_full <- colMeans(X_train_full, na.rm = TRUE)
@@ -652,17 +619,16 @@ for (region in REGIONS) {
         X_train_full_sc[is.na(X_train_full_sc)] <- 0
         X_test_full_sc[is.na(X_test_full_sc)] <- 0
 
-        # Prepare CI-MLP features (CAST vars + DAG interactions)
-        ci_train_info <- build_cimlp_features(
-            X_train_cast_sc, cast_vars,
-            adj_matrix, ate_results, boot_str
+        # CAST特征工程：全变量ATE加权 + 仅筛选变量间的DAG交互
+        cast_train_info <- build_cast_features(
+            X_train_full_sc, selected_vars, cast_vars, strong_edges, ate_results, boot_str
         )
-        ci_test_info <- build_cimlp_features(
-            X_test_cast_sc, cast_vars,
-            adj_matrix, ate_results, boot_str
+        cast_test_info <- build_cast_features(
+            X_test_full_sc, selected_vars, cast_vars, strong_edges, ate_results, boot_str
         )
-        X_train_ci <- ci_train_info$data
-        X_test_ci <- ci_test_info$data
+        X_train_cast <- cast_train_info$data
+        X_test_cast <- cast_test_info$data
+        n_cast_interactions <- cast_train_info$n_interactions
 
         # Stratified val split
         set.seed(123)
@@ -677,70 +643,16 @@ for (region in REGIONS) {
         focal_alpha <- 1 - mean(y_tr)
         batch_size <- min(128L, max(32L, as.integer(length(y_tr) / 100)))
 
-        X_tr_cast <- X_train_cast_sc[-val_idx, ]
-        X_val_cast <- X_train_cast_sc[val_idx, ]
+        X_tr_cast <- X_train_cast[-val_idx, ]
+        X_val_cast <- X_train_cast[val_idx, ]
         X_tr_full <- X_train_full_sc[-val_idx, ]
         X_val_full <- X_train_full_sc[val_idx, ]
-        X_tr_ci <- X_train_ci[-val_idx, ]
-        X_val_ci <- X_train_ci[val_idx, ]
 
+        hidden_size_cast <- max(32L, min(128L, as.integer(cast_train_info$n_total * 4)))
         hidden_size_full <- max(32L, min(128L, as.integer(length(selected_vars) * 8)))
         sp_results <- data.frame()
 
-        # ---- Group C: CI-MLP ----
-        {
-            aucs <- numeric(n_runs)
-            tsss <- numeric(n_runs)
-            for (ri in 1:n_runs) {
-                torch_manual_seed(seeds[ri])
-                set.seed(seeds[ri])
-                tryCatch(
-                    {
-                        ds <- flat_dataset(X_tr_ci, y_tr)
-                        dl <- dataloader(ds,
-                            batch_size = batch_size,
-                            shuffle = TRUE, drop_last = TRUE
-                        )
-                        vt <- torch_tensor(as.matrix(X_val_ci), dtype = torch_float())
-                        m <- CI_MLP(ncol(X_tr_ci), hidden_size, 0.2)
-                        res <- train_nn(m, dl,
-                            function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()),
-                            y_val,
-                            epochs = 200, patience = 30, focal_alpha = focal_alpha
-                        )
-                        res$model$eval()
-                        with_no_grad({
-                            tt <- torch_tensor(as.matrix(X_test_ci), dtype = torch_float())
-                            pred <- as.numeric(torch_sigmoid(res$model(tt))$squeeze()$cpu())
-                        })
-                        ev <- evaluate_model(pred, y_test_all)
-                        aucs[ri] <- ev["auc"]
-                        tsss[ri] <- ev["tss"]
-                    },
-                    error = function(e) {
-                        cat(sprintf("      CI-MLP run %d FAILED: %s\n", ri, e$message))
-                        aucs[ri] <<- NA
-                        tsss[ri] <<- NA
-                    }
-                )
-            }
-            sp_results <- rbind(sp_results, data.frame(
-                region = region, species = sp, model = "CI_MLP", var_set = "cast",
-                n_vars = length(cast_vars), n_interactions = ci_train_info$n_interactions,
-                n_features_total = ci_train_info$n_total,
-                n_dag_edges = n_dag_edges_cast, dag_density = dag_density,
-                auc_mean = mean(aucs, na.rm = TRUE), auc_sd = sd(aucs, na.rm = TRUE),
-                tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE),
-                n_success = sum(!is.na(aucs)), stringsAsFactors = FALSE
-            ))
-            cat(sprintf(
-                "      CI-MLP:      AUC=%.4f±%.4f (%dv+%d int)\n",
-                mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE),
-                length(cast_vars), ci_train_info$n_interactions
-            ))
-        }
-
-        # ---- Group B: FlatNN_cast ----
+        # ---- CAST（全变量ATE加权 + DAG交互特征） ----
         {
             aucs <- numeric(n_runs)
             tsss <- numeric(n_runs)
@@ -755,15 +667,15 @@ for (region in REGIONS) {
                             shuffle = TRUE, drop_last = TRUE
                         )
                         vt <- torch_tensor(as.matrix(X_val_cast), dtype = torch_float())
-                        m <- FlatNN(length(cast_vars), hidden_size, 0.2)
+                        m <- CI_MLP(ncol(X_tr_cast), hidden_size_cast, 0.2)
                         res <- train_nn(m, dl,
                             function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()),
                             y_val,
-                            epochs = 200, patience = 30, focal_alpha = focal_alpha
+                            epochs = 200, patience = 20, focal_alpha = focal_alpha
                         )
                         res$model$eval()
                         with_no_grad({
-                            tt <- torch_tensor(as.matrix(X_test_cast_sc), dtype = torch_float())
+                            tt <- torch_tensor(as.matrix(X_test_cast), dtype = torch_float())
                             pred <- as.numeric(torch_sigmoid(res$model(tt))$squeeze()$cpu())
                         })
                         ev <- evaluate_model(pred, y_test_all)
@@ -771,27 +683,29 @@ for (region in REGIONS) {
                         tsss[ri] <- ev["tss"]
                     },
                     error = function(e) {
+                        cat(sprintf("      CAST run %d FAILED: %s\n", ri, e$message))
                         aucs[ri] <<- NA
                         tsss[ri] <<- NA
                     }
                 )
             }
             sp_results <- rbind(sp_results, data.frame(
-                region = region, species = sp, model = "FlatNN_cast", var_set = "cast",
-                n_vars = length(cast_vars), n_interactions = 0L,
-                n_features_total = length(cast_vars),
-                n_dag_edges = n_dag_edges_cast, dag_density = dag_density,
+                region = region, species = sp, model = "CAST", var_set = "full+causal",
+                n_vars = length(selected_vars), n_interactions = n_cast_interactions,
+                n_features_total = cast_train_info$n_total,
+                n_dag_edges = nrow(strong_edges), dag_density = dag_density,
                 auc_mean = mean(aucs, na.rm = TRUE), auc_sd = sd(aucs, na.rm = TRUE),
                 tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE),
                 n_success = sum(!is.na(aucs)), stringsAsFactors = FALSE
             ))
             cat(sprintf(
-                "      FlatNN_cast: AUC=%.4f±%.4f\n",
-                mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE)
+                "      CAST:  AUC=%.4f±%.4f (%dv+%d int)\n",
+                mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE),
+                length(selected_vars), n_cast_interactions
             ))
         }
 
-        # ---- Group A: FlatNN_full ----
+        # ---- MLP（全变量，无因果增强） ----
         {
             aucs <- numeric(n_runs)
             tsss <- numeric(n_runs)
@@ -806,11 +720,11 @@ for (region in REGIONS) {
                             shuffle = TRUE, drop_last = TRUE
                         )
                         vt <- torch_tensor(as.matrix(X_val_full), dtype = torch_float())
-                        m <- FlatNN(length(selected_vars), hidden_size_full, 0.2)
+                        m <- MLP(length(selected_vars), hidden_size_full, 0.2)
                         res <- train_nn(m, dl,
                             function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()),
                             y_val,
-                            epochs = 200, patience = 30, focal_alpha = focal_alpha
+                            epochs = 200, patience = 20, focal_alpha = focal_alpha
                         )
                         res$model$eval()
                         with_no_grad({
@@ -828,7 +742,7 @@ for (region in REGIONS) {
                 )
             }
             sp_results <- rbind(sp_results, data.frame(
-                region = region, species = sp, model = "FlatNN_full", var_set = "full",
+                region = region, species = sp, model = "MLP", var_set = "full",
                 n_vars = length(selected_vars), n_interactions = 0L,
                 n_features_total = length(selected_vars),
                 n_dag_edges = NA, dag_density = dag_density,
@@ -837,45 +751,41 @@ for (region in REGIONS) {
                 n_success = sum(!is.na(aucs)), stringsAsFactors = FALSE
             ))
             cat(sprintf(
-                "      FlatNN_full: AUC=%.4f±%.4f\n",
+                "      MLP:   AUC=%.4f±%.4f\n",
                 mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE)
             ))
         }
 
-        # ---- Traditional SDMs (full + CAST) ----
+        # ---- 传统SDM (RF, Maxent, BRT, GAM) ——全变量 ----
         y_tr_raw <- train_data$presence
         for (sdm_name in c("RF", "Maxent", "BRT", "GAM")) {
-            for (vset in c("cast", "full")) {
-                vars_use <- if (vset == "cast") cast_vars else selected_vars
-                model_label <- paste0(sdm_name, "_", vset)
-                tryCatch(
-                    {
-                        pred <- train_sdm(sdm_name,
-                            train_data[, vars_use, drop = FALSE],
-                            y_tr_raw,
-                            test_data[, vars_use, drop = FALSE],
-                            gam_vars = vars_use
-                        )
-                        ev <- evaluate_model(pred, y_test_all)
-                        sp_results <- rbind(sp_results, data.frame(
-                            region = region, species = sp, model = model_label,
-                            var_set = vset, n_vars = length(vars_use),
-                            n_interactions = 0L, n_features_total = length(vars_use),
-                            n_dag_edges = NA, dag_density = dag_density,
-                            auc_mean = ev["auc"], auc_sd = 0,
-                            tss_mean = ev["tss"], tss_sd = 0,
-                            n_success = 1, stringsAsFactors = FALSE
-                        ))
-                        cat(sprintf("      %-14s AUC=%.4f\n", model_label, ev["auc"]))
-                    },
-                    error = function(e) {
-                        cat(sprintf(
-                            "      %s FAILED: %s\n", model_label,
-                            substr(e$message, 1, 60)
-                        ))
-                    }
-                )
-            }
+            tryCatch(
+                {
+                    pred <- train_sdm(sdm_name,
+                        train_data[, selected_vars, drop = FALSE],
+                        y_tr_raw,
+                        test_data[, selected_vars, drop = FALSE],
+                        gam_vars = selected_vars
+                    )
+                    ev <- evaluate_model(pred, y_test_all)
+                    sp_results <- rbind(sp_results, data.frame(
+                        region = region, species = sp, model = sdm_name,
+                        var_set = "full", n_vars = length(selected_vars),
+                        n_interactions = 0L, n_features_total = length(selected_vars),
+                        n_dag_edges = NA, dag_density = dag_density,
+                        auc_mean = ev["auc"], auc_sd = 0,
+                        tss_mean = ev["tss"], tss_sd = 0,
+                        n_success = 1, stringsAsFactors = FALSE
+                    ))
+                    cat(sprintf("      %s:    AUC=%.4f\n", sdm_name, ev["auc"]))
+                },
+                error = function(e) {
+                    cat(sprintf(
+                        "      %s FAILED: %s\n", sdm_name,
+                        substr(e$message, 1, 60)
+                    ))
+                }
+            )
         }
 
         all_results <- rbind(all_results, sp_results)
@@ -885,6 +795,7 @@ for (region in REGIONS) {
             write.csv(all_results, "output/case2/all_results_v3.csv", row.names = FALSE)
             write.csv(all_ate_results, "output/case2/all_ate_results_v3.csv", row.names = FALSE)
             write.csv(all_dag_info, "output/case2/all_dag_info_v3.csv", row.names = FALSE)
+            write.csv(all_dag_edges, "output/case2/all_dag_edges_v3.csv", row.names = FALSE)
             write.csv(all_screening, "output/case2/all_screening_v3.csv", row.names = FALSE)
             write.csv(all_role_info, "output/case2/all_role_info_v3.csv", row.names = FALSE)
             cat(sprintf("    [Checkpoint: %d species total saved]\n", global_sp_idx))
@@ -904,6 +815,7 @@ for (region in REGIONS) {
 write.csv(all_results, "output/case2/all_results_v3.csv", row.names = FALSE)
 write.csv(all_ate_results, "output/case2/all_ate_results_v3.csv", row.names = FALSE)
 write.csv(all_dag_info, "output/case2/all_dag_info_v3.csv", row.names = FALSE)
+write.csv(all_dag_edges, "output/case2/all_dag_edges_v3.csv", row.names = FALSE)
 write.csv(all_screening, "output/case2/all_screening_v3.csv", row.names = FALSE)
 write.csv(all_role_info, "output/case2/all_role_info_v3.csv", row.names = FALSE)
 
@@ -914,11 +826,12 @@ cat("\n======================================================================\n"
 cat("  CAST v3 Multi-Region Experiment Complete!\n")
 cat("======================================================================\n")
 
+# 按区域汇总
 for (r in REGIONS) {
-    n_sp <- sum(all_results$region == r & all_results$model == "CI_MLP")
+    n_sp <- sum(all_results$region == r & all_results$model == "CAST")
     if (n_sp > 0) {
         cat(sprintf("\n  ── %s (%d species) ──\n", r, n_sp))
-        all_results %>%
+        region_summary <- all_results %>%
             filter(region == r) %>%
             group_by(model) %>%
             summarise(
@@ -926,52 +839,59 @@ for (r in REGIONS) {
                 sd_auc = sd(auc_mean, na.rm = TRUE),
                 n = n(), .groups = "drop"
             ) %>%
-            arrange(desc(mean_auc)) %>%
-            {
-                for (i in 1:min(5, nrow(.))) {
-                    row <- .[i, ]
-                    mk <- if (row$model == "CI_MLP") " ★" else "  "
-                    cat(sprintf(
-                        "  %s %-14s AUC=%.4f±%.4f (n=%d)\n",
-                        mk, row$model, row$mean_auc, row$sd_auc, row$n
-                    ))
-                }
-                .
-            } %>%
-            invisible()
+            arrange(desc(mean_auc))
+        for (i in 1:nrow(region_summary)) {
+            row <- region_summary[i, ]
+            mk <- if (row$model == "CAST") " ★" else "  "
+            cat(sprintf(
+                "  %s %-12s AUC=%.4f±%.4f (n=%d)\n",
+                mk, row$model, row$mean_auc, row$sd_auc, row$n
+            ))
+        }
     }
 }
 
-# Key diagnostic: DAG density vs CI-MLP advantage
-cat("\n  ── DAG Density vs Structure Advantage ──\n")
-ci_vs_flat <- all_results %>%
-    filter(model %in% c("CI_MLP", "FlatNN_cast")) %>%
-    select(region, species, model, auc_mean, dag_density) %>%
-    pivot_wider(names_from = model, values_from = auc_mean) %>%
-    filter(!is.na(CI_MLP), !is.na(FlatNN_cast)) %>%
-    mutate(delta = CI_MLP - FlatNN_cast)
+# 关键诊断: CAST vs 最优基线
+cat("\n  ── CAST vs Best Baseline ──\n")
+if (nrow(all_results) == 0) {
+    cat("  No results to analyze.\n")
+} else {
+    cast_vs_others <- all_results %>%
+        mutate(model_label = ifelse(model == "CAST", "CAST", model)) %>%
+        select(region, species, model_label, auc_mean) %>%
+        pivot_wider(names_from = model_label, values_from = auc_mean,
+                    values_fn = max)
 
-if (nrow(ci_vs_flat) > 0) {
-    cat(sprintf(
-        "  Overall: CI-MLP wins in %d/%d species (%.0f%%)\n",
-        sum(ci_vs_flat$delta > 0), nrow(ci_vs_flat),
-        mean(ci_vs_flat$delta > 0) * 100
-    ))
-    cat(sprintf("  Mean ΔAUC: %+.4f\n", mean(ci_vs_flat$delta)))
+    if ("CAST" %in% names(cast_vs_others)) {
+        other_cols <- setdiff(names(cast_vs_others), c("region", "species", "CAST"))
+        cast_vs_others$best_other <- apply(cast_vs_others[, other_cols, drop = FALSE], 1,
+            function(x) max(x, na.rm = TRUE))
+        cast_vs_others$delta <- cast_vs_others$CAST - cast_vs_others$best_other
+        valid <- cast_vs_others %>% filter(!is.na(CAST), is.finite(best_other))
 
-    # Split by DAG density (sparse vs dense)
-    med_density <- median(ci_vs_flat$dag_density)
-    sparse <- ci_vs_flat %>% filter(dag_density <= med_density)
-    dense <- ci_vs_flat %>% filter(dag_density > med_density)
+        cat(sprintf(
+            "  CAST wins in %d/%d species (%.0f%%)\n",
+            sum(valid$delta > 0), nrow(valid),
+            mean(valid$delta > 0) * 100
+        ))
+        cat(sprintf("  Mean ΔAUC vs best baseline: %+.4f\n", mean(valid$delta)))
+    }
 
-    cat(sprintf(
-        "  Sparse DAG (density≤%.2f): ΔAUC=%+.4f, wins=%d/%d\n",
-        med_density, mean(sparse$delta), sum(sparse$delta > 0), nrow(sparse)
-    ))
-    cat(sprintf(
-        "  Dense  DAG (density>%.2f): ΔAUC=%+.4f, wins=%d/%d\n",
-        med_density, mean(dense$delta), sum(dense$delta > 0), nrow(dense)
-    ))
-}
+    # 因果增强效应: CAST vs MLP (同为全变量，区别在于因果特征)
+    cat("\n  ── Causal Enhancement Effect (CAST vs MLP) ──\n")
+    causal_eff <- all_results %>%
+        filter(model %in% c("CAST", "MLP")) %>%
+        select(region, species, model, auc_mean) %>%
+        pivot_wider(names_from = model, values_from = auc_mean)
+
+    if (all(c("CAST", "MLP") %in% names(causal_eff))) {
+        causal_eff <- causal_eff %>%
+            filter(!is.na(CAST), !is.na(MLP)) %>%
+            mutate(delta = CAST - MLP)
+        cat(sprintf("  Mean causal enhancement: %+.4f AUC (wins %d/%d, %.0f%%)\n",
+            mean(causal_eff$delta), sum(causal_eff$delta > 0), nrow(causal_eff),
+            mean(causal_eff$delta > 0) * 100))
+    }
+} # end if nrow(all_results) > 0
 
 cat("\n  Next: source('scripts/case2/03_publication_figures.R')\n")
