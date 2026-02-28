@@ -234,8 +234,9 @@ build_cast_features <- function(X_full_sc, all_vars, cast_vars, strong_edges,
     names(ate_weights) <- all_vars
     for (v in all_vars) {
         idx <- which(ate_results$variable == v)
-        if (length(idx) > 0 && ate_results$significant[idx[1]]) {
-            ate_weights[v] <- 1.0 + abs(ate_results$coef[idx[1]])
+        if (length(idx) > 0 && isTRUE(ate_results$significant[idx[1]])) {
+            coef_val <- ate_results$coef[idx[1]]
+            if (is.finite(coef_val)) ate_weights[v] <- 1.0 + abs(coef_val)
         }
     }
     X_weighted <- X_base

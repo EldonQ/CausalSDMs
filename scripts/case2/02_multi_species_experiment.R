@@ -178,8 +178,9 @@ build_cast_features <- function(X_full_sc, all_vars, cast_vars, strong_edges,
     names(ate_weights) <- all_vars
     for (v in all_vars) {
         idx <- which(ate_results$variable == v)
-        if (length(idx) > 0 && ate_results$significant[idx[1]]) {
-            ate_weights[v] <- 1.0 + abs(ate_results$coef[idx[1]])
+        if (length(idx) > 0 && isTRUE(ate_results$significant[idx[1]])) {
+            coef_val <- ate_results$coef[idx[1]]
+            if (is.finite(coef_val)) ate_weights[v] <- 1.0 + abs(coef_val)
         }
     }
     X_weighted <- X_base
@@ -401,12 +402,44 @@ cat(sprintf("  CAST Multi-Region Experiment: %d regions\n", length(REGIONS)))
 cat("  Models: CAST, MLP, RF, Maxent, BRT, GAM\n")
 cat("======================================================================\n\n")
 
-all_results <- data.frame()
+# ---- 断点续跑：加载已有结果，跳过已完成的 (region, species) ----
+all_results     <- data.frame()
 all_ate_results <- data.frame()
-all_dag_info <- data.frame()
-all_dag_edges <- data.frame()
-all_screening <- data.frame()
-all_role_info <- data.frame()
+all_dag_info    <- data.frame()
+all_dag_edges   <- data.frame()
+all_screening   <- data.frame()
+all_role_info   <- data.frame()
+
+CHECKPOINT_DIR <- "output/case2"
+MIN_MODELS_PER_SPECIES <- 6L   # 至少 6 个模型有结果即视为该物种已完成
+
+if (file.exists(file.path(CHECKPOINT_DIR, "all_results_v3.csv"))) {
+    all_results <- read.csv(file.path(CHECKPOINT_DIR, "all_results_v3.csv"), stringsAsFactors = FALSE)
+    if (file.exists(file.path(CHECKPOINT_DIR, "all_ate_results_v3.csv"))) {
+        all_ate_results <- read.csv(file.path(CHECKPOINT_DIR, "all_ate_results_v3.csv"), stringsAsFactors = FALSE)
+    }
+    if (file.exists(file.path(CHECKPOINT_DIR, "all_dag_info_v3.csv"))) {
+        all_dag_info <- read.csv(file.path(CHECKPOINT_DIR, "all_dag_info_v3.csv"), stringsAsFactors = FALSE)
+    }
+    if (file.exists(file.path(CHECKPOINT_DIR, "all_dag_edges_v3.csv"))) {
+        all_dag_edges <- read.csv(file.path(CHECKPOINT_DIR, "all_dag_edges_v3.csv"), stringsAsFactors = FALSE)
+    }
+    if (file.exists(file.path(CHECKPOINT_DIR, "all_screening_v3.csv"))) {
+        all_screening <- read.csv(file.path(CHECKPOINT_DIR, "all_screening_v3.csv"), stringsAsFactors = FALSE)
+    }
+    if (file.exists(file.path(CHECKPOINT_DIR, "all_role_info_v3.csv"))) {
+        all_role_info <- read.csv(file.path(CHECKPOINT_DIR, "all_role_info_v3.csv"), stringsAsFactors = FALSE)
+    }
+    done_count <- all_results %>%
+        group_by(region, species) %>%
+        summarise(n = n(), .groups = "drop") %>%
+        filter(n >= MIN_MODELS_PER_SPECIES)
+    done_pairs <- paste(done_count$region, done_count$species, sep = "___")
+    cat(sprintf("  [Resume] Loaded checkpoint: %d species already done, %d result rows.\n",
+        nrow(done_count), nrow(all_results)))
+} else {
+    done_pairs <- character(0)
+}
 
 global_sp_idx <- 0
 
@@ -430,6 +463,12 @@ for (region in REGIONS) {
 
     for (sp_idx in seq_along(region_species)) {
         sp <- region_species[sp_idx]
+        pair_key <- paste(region, sp, sep = "___")
+        if (pair_key %in% done_pairs) {
+            cat(sprintf("\n  ─── [%s %d/%d] Species: %s ─── [Skip: already done]\n",
+                region, sp_idx, length(region_species), sp))
+            next
+        }
         global_sp_idx <- global_sp_idx + 1
         cat(sprintf(
             "\n  ─── [%s %d/%d] Species: %s ───\n",
@@ -849,14 +888,14 @@ for (region in REGIONS) {
 
         all_results <- rbind(all_results, sp_results)
 
-        # Checkpoint
+        # 断点：每完成一个物种即写入，便于中断后续跑
+        write.csv(all_results, "output/case2/all_results_v3.csv", row.names = FALSE)
+        write.csv(all_ate_results, "output/case2/all_ate_results_v3.csv", row.names = FALSE)
+        write.csv(all_dag_info, "output/case2/all_dag_info_v3.csv", row.names = FALSE)
+        write.csv(all_dag_edges, "output/case2/all_dag_edges_v3.csv", row.names = FALSE)
+        write.csv(all_screening, "output/case2/all_screening_v3.csv", row.names = FALSE)
+        write.csv(all_role_info, "output/case2/all_role_info_v3.csv", row.names = FALSE)
         if (global_sp_idx %% 5 == 0) {
-            write.csv(all_results, "output/case2/all_results_v3.csv", row.names = FALSE)
-            write.csv(all_ate_results, "output/case2/all_ate_results_v3.csv", row.names = FALSE)
-            write.csv(all_dag_info, "output/case2/all_dag_info_v3.csv", row.names = FALSE)
-            write.csv(all_dag_edges, "output/case2/all_dag_edges_v3.csv", row.names = FALSE)
-            write.csv(all_screening, "output/case2/all_screening_v3.csv", row.names = FALSE)
-            write.csv(all_role_info, "output/case2/all_role_info_v3.csv", row.names = FALSE)
             cat(sprintf("    [Checkpoint: %d species total saved]\n", global_sp_idx))
         }
     } # end species loop
