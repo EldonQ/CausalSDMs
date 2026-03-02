@@ -14,7 +14,7 @@
 #   Step 6: Unified comparison table:
 #       CAST (全变量ATE加权 + DAG交互特征, CI-MLP架构)
 #       MLP  (全变量, 标准MLP)
-#       RF / Maxent / BRT / GAM (全变量)
+#       RF / Maxent / BRT (全变量)
 #
 # Prerequisite: Run 00_data_preparation.R first
 ################################################################################
@@ -24,7 +24,7 @@ gc()
 setwd("E:/CausalSDMs")
 
 # ---- Dependencies ----
-pkgs <- c("tidyverse", "bnlearn", "pROC", "caret", "ranger", "maxnet", "gbm", "mgcv", "torch")
+pkgs <- c("tidyverse", "bnlearn", "pROC", "caret", "ranger", "maxnet", "gbm", "torch")
 for (pkg in pkgs) {
     if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
         install.packages(pkg, dependencies = TRUE)
@@ -352,7 +352,7 @@ flat_dataset <- dataset("FlatDS",
 # ==============================================================================
 # Traditional SDM helper
 # ==============================================================================
-train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw, gam_vars = NULL) {
+train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw) {
     switch(sdm_name,
         "RF" = {
             set.seed(42)
@@ -378,18 +378,6 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw, gam_vars = NULL) {
             )
             bt <- gbm::gbm.perf(brt, method = "cv", plot.it = FALSE)
             predict(brt, X_te_raw, n.trees = bt, type = "response")
-        },
-        "GAM" = {
-            gv <- if (!is.null(gam_vars)) gam_vars else names(X_tr_raw)
-            gf <- as.formula(paste(
-                "presence ~",
-                paste(paste0("s(", gv, ", k=5)"), collapse = " + ")
-            ))
-            gm <- mgcv::gam(gf,
-                data = cbind(presence = y_tr_raw, X_tr_raw[, gv, drop = FALSE]),
-                family = binomial(), method = "REML"
-            )
-            as.numeric(predict(gm, X_te_raw[, gv, drop = FALSE], type = "response"))
         }
     )
 }
@@ -399,19 +387,20 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw, gam_vars = NULL) {
 # ==============================================================================
 cat("======================================================================\n")
 cat(sprintf("  CAST Multi-Region Experiment: %d regions\n", length(REGIONS)))
-cat("  Models: CAST, MLP, RF, Maxent, BRT, GAM\n")
+cat("  Models: CAST, MLP_ATE, MLP, RF, Maxent, BRT\n")
 cat("======================================================================\n\n")
 
 # ---- 断点续跑：加载已有结果，跳过已完成的 (region, species) ----
-all_results     <- data.frame()
+all_results <- data.frame()
 all_ate_results <- data.frame()
-all_dag_info    <- data.frame()
-all_dag_edges   <- data.frame()
-all_screening   <- data.frame()
-all_role_info   <- data.frame()
+all_dag_info <- data.frame()
+all_dag_edges <- data.frame()
+all_screening <- data.frame()
+all_role_info <- data.frame()
 
 CHECKPOINT_DIR <- "output/case2"
-MIN_MODELS_PER_SPECIES <- 6L   # 至少 6 个模型有结果即视为该物种已完成
+ALL_MODEL_NAMES <- c("CAST", "MLP_ATE", "MLP", "RF", "Maxent", "BRT")
+MIN_MODELS_PER_SPECIES <- length(ALL_MODEL_NAMES) # 全部 6 个模型齐全才跳过
 
 if (file.exists(file.path(CHECKPOINT_DIR, "all_results_v3.csv"))) {
     all_results <- read.csv(file.path(CHECKPOINT_DIR, "all_results_v3.csv"), stringsAsFactors = FALSE)
@@ -430,13 +419,63 @@ if (file.exists(file.path(CHECKPOINT_DIR, "all_results_v3.csv"))) {
     if (file.exists(file.path(CHECKPOINT_DIR, "all_role_info_v3.csv"))) {
         all_role_info <- read.csv(file.path(CHECKPOINT_DIR, "all_role_info_v3.csv"), stringsAsFactors = FALSE)
     }
+
+    # ── 去重：按自然主键去除断点续跑可能产生的重复行 ──
+    if (nrow(all_results) > 0) {
+        all_results <- all_results %>% distinct(region, species, model, .keep_all = TRUE)
+    }
+    if (nrow(all_ate_results) > 0) {
+        all_ate_results <- all_ate_results %>% distinct(region, species, variable, .keep_all = TRUE)
+    }
+    if (nrow(all_dag_info) > 0) {
+        all_dag_info <- all_dag_info %>% distinct(region, species, .keep_all = TRUE)
+    }
+    if (nrow(all_dag_edges) > 0) {
+        all_dag_edges <- all_dag_edges %>% distinct(region, species, from, to, .keep_all = TRUE)
+    }
+    if (nrow(all_screening) > 0) {
+        all_screening <- all_screening %>% distinct(region, species, variable, .keep_all = TRUE)
+    }
+    if (nrow(all_role_info) > 0) {
+        all_role_info <- all_role_info %>% distinct(region, species, variable, .keep_all = TRUE)
+    }
+
+    # 判定完成：要求每个物种拥有全部 7 个模型的结果
     done_count <- all_results %>%
         group_by(region, species) %>%
-        summarise(n = n(), .groups = "drop") %>%
+        summarise(n = n(), models = paste(sort(unique(model)), collapse = ","), .groups = "drop") %>%
         filter(n >= MIN_MODELS_PER_SPECIES)
     done_pairs <- paste(done_count$region, done_count$species, sep = "___")
-    cat(sprintf("  [Resume] Loaded checkpoint: %d species already done, %d result rows.\n",
-        nrow(done_count), nrow(all_results)))
+
+    # 清理未完成物种的所有数据（让它们完整重跑）
+    incomplete <- all_results %>%
+        group_by(region, species) %>%
+        summarise(n = n(), .groups = "drop") %>%
+        filter(n < MIN_MODELS_PER_SPECIES)
+    if (nrow(incomplete) > 0) {
+        inc_pairs <- paste(incomplete$region, incomplete$species, sep = "___")
+        cat(sprintf(
+            "  [Resume] Cleaning %d incomplete species for re-run: %s\n",
+            nrow(incomplete), paste(inc_pairs, collapse = ", ")
+        ))
+        key_filter <- function(df, r_col = "region", s_col = "species") {
+            if (nrow(df) == 0) {
+                return(df)
+            }
+            df %>% filter(!paste(!!sym(r_col), !!sym(s_col), sep = "___") %in% inc_pairs)
+        }
+        all_results <- key_filter(all_results)
+        all_ate_results <- key_filter(all_ate_results)
+        all_dag_info <- key_filter(all_dag_info)
+        all_dag_edges <- key_filter(all_dag_edges)
+        all_screening <- key_filter(all_screening)
+        all_role_info <- key_filter(all_role_info)
+    }
+
+    cat(sprintf(
+        "  [Resume] Loaded checkpoint: %d species fully done, %d result rows (after dedup+clean).\n",
+        nrow(done_count), nrow(all_results)
+    ))
 } else {
     done_pairs <- character(0)
 }
@@ -465,8 +504,10 @@ for (region in REGIONS) {
         sp <- region_species[sp_idx]
         pair_key <- paste(region, sp, sep = "___")
         if (pair_key %in% done_pairs) {
-            cat(sprintf("\n  ─── [%s %d/%d] Species: %s ─── [Skip: already done]\n",
-                region, sp_idx, length(region_species), sp))
+            cat(sprintf(
+                "\n  ─── [%s %d/%d] Species: %s ─── [Skip: already done]\n",
+                region, sp_idx, length(region_species), sp
+            ))
             next
         }
         global_sp_idx <- global_sp_idx + 1
@@ -484,7 +525,7 @@ for (region in REGIONS) {
         }
         train_raw <- read.csv(train_file, stringsAsFactors = FALSE)
         test_raw <- read.csv(test_file, stringsAsFactors = FALSE)
-        env_cols <- setdiff(names(train_raw), "presence")
+        env_cols <- setdiff(names(train_raw), c("presence", "x", "y"))
         for (col in env_cols) {
             train_raw[[col]] <- as.numeric(train_raw[[col]])
             test_raw[[col]] <- as.numeric(test_raw[[col]])
@@ -785,6 +826,7 @@ for (region in REGIONS) {
                         tsss[ri] <- ev["tss"]
                     },
                     error = function(e) {
+                        cat(sprintf("      MLP_ATE run %d FAILED: %s\n", ri, e$message))
                         aucs[ri] <<- NA
                         tsss[ri] <<- NA
                     }
@@ -799,8 +841,10 @@ for (region in REGIONS) {
                 tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE),
                 n_success = sum(!is.na(aucs)), stringsAsFactors = FALSE
             ))
-            cat(sprintf("      MLP_ATE: AUC=%.4f±%.4f\n",
-                mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE)))
+            cat(sprintf(
+                "      MLP_ATE: AUC=%.4f±%.4f\n",
+                mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE)
+            ))
         }
 
         # ---- MLP（全变量，无因果增强） ----
@@ -854,16 +898,16 @@ for (region in REGIONS) {
             ))
         }
 
-        # ---- 传统SDM (RF, Maxent, BRT, GAM) ——全变量 ----
+        # ---- 传统SDM (RF, Maxent, BRT) ——全变量 ----
         y_tr_raw <- train_data$presence
-        for (sdm_name in c("RF", "Maxent", "BRT", "GAM")) {
+        for (sdm_name in c("RF", "Maxent", "BRT")) {
             tryCatch(
                 {
-                    pred <- train_sdm(sdm_name,
+                    pred <- train_sdm(
+                        sdm_name,
                         train_data[, selected_vars, drop = FALSE],
                         y_tr_raw,
-                        test_data[, selected_vars, drop = FALSE],
-                        gam_vars = selected_vars
+                        test_data[, selected_vars, drop = FALSE]
                     )
                     ev <- evaluate_model(pred, y_test_all)
                     sp_results <- rbind(sp_results, data.frame(
@@ -957,13 +1001,17 @@ if (nrow(all_results) == 0) {
     cast_vs_others <- all_results %>%
         mutate(model_label = ifelse(model == "CAST", "CAST", model)) %>%
         select(region, species, model_label, auc_mean) %>%
-        pivot_wider(names_from = model_label, values_from = auc_mean,
-                    values_fn = max)
+        pivot_wider(
+            names_from = model_label, values_from = auc_mean,
+            values_fn = max
+        )
 
     if ("CAST" %in% names(cast_vs_others)) {
         other_cols <- setdiff(names(cast_vs_others), c("region", "species", "CAST"))
-        cast_vs_others$best_other <- apply(cast_vs_others[, other_cols, drop = FALSE], 1,
-            function(x) max(x, na.rm = TRUE))
+        cast_vs_others$best_other <- apply(
+            cast_vs_others[, other_cols, drop = FALSE], 1,
+            function(x) max(x, na.rm = TRUE)
+        )
         cast_vs_others$delta <- cast_vs_others$CAST - cast_vs_others$best_other
         valid <- cast_vs_others %>% filter(!is.na(CAST), is.finite(best_other))
 
@@ -980,15 +1028,17 @@ if (nrow(all_results) == 0) {
     causal_eff <- all_results %>%
         filter(model %in% c("CAST", "MLP")) %>%
         select(region, species, model, auc_mean) %>%
-        pivot_wider(names_from = model, values_from = auc_mean)
+        pivot_wider(names_from = model, values_from = auc_mean, values_fn = max)
 
     if (all(c("CAST", "MLP") %in% names(causal_eff))) {
         causal_eff <- causal_eff %>%
             filter(!is.na(CAST), !is.na(MLP)) %>%
             mutate(delta = CAST - MLP)
-        cat(sprintf("  Mean causal enhancement: %+.4f AUC (wins %d/%d, %.0f%%)\n",
+        cat(sprintf(
+            "  Mean causal enhancement: %+.4f AUC (wins %d/%d, %.0f%%)\n",
             mean(causal_eff$delta), sum(causal_eff$delta > 0), nrow(causal_eff),
-            mean(causal_eff$delta > 0) * 100))
+            mean(causal_eff$delta > 0) * 100
+        ))
     }
 } # end if nrow(all_results) > 0
 

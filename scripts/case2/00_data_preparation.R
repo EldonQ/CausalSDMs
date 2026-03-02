@@ -76,7 +76,8 @@ for (region in regions) {
     } else {
         pa_list <- lapply(groups, function(g) {
             tryCatch(disdat::disPa(region, group = g),
-                error = function(e) NULL)
+                error = function(e) NULL
+            )
         })
         pa_list <- pa_list[!sapply(pa_list, is.null)]
         # 合并所有group的PA（取共有列的并集）
@@ -94,7 +95,8 @@ for (region in regions) {
         }
         env_list <- lapply(groups, function(g) {
             tryCatch(disdat::disEnv(region, group = g),
-                error = function(e) NULL)
+                error = function(e) NULL
+            )
         })
         env_list <- env_list[!sapply(env_list, is.null)]
         if (length(env_list) > 0) {
@@ -151,23 +153,26 @@ for (region in regions) {
         filter(n_po >= min_po) %>%
         pull(spid)
 
-    # Background data (shared)
-    bg_data <- bg[, env_cols, drop = FALSE] %>% mutate(presence = 0)
+    # Background data (shared) — 保留 x, y 坐标供后续 CATE 空间分析
+    coord_cols <- intersect(c("x", "y"), names(bg))
+    save_cols <- c(coord_cols, env_cols)
+    bg_data <- bg[, save_cols, drop = FALSE] %>% mutate(presence = 0)
 
     region_summary <- data.frame()
 
     for (sp in viable_species) {
-        # Training: PO + BG
+        # Training: PO + BG (保留 x, y 坐标)
         sp_po <- po %>%
             filter(spid == sp) %>%
-            select(all_of(env_cols)) %>%
+            select(all_of(save_cols)) %>%
             mutate(presence = 1)
         train <- bind_rows(sp_po, bg_data) %>% drop_na()
 
-        # Testing: independent PA
+        # Testing: independent PA (保留 x, y 坐标)
         if (sp %in% names(pa_full)) {
+            test_cols <- intersect(c("x", "y", sp, env_cols), names(pa_full))
             test <- pa_full %>%
-                select(all_of(c(sp, env_cols))) %>%
+                select(all_of(test_cols)) %>%
                 rename(presence = !!sp) %>%
                 drop_na()
         } else {
