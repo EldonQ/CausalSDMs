@@ -115,54 +115,32 @@ pb <- ggplot(paired_wide) +
     theme(legend.position = "bottom")
 
 # ══════════════════════════════════════════════════════════════
-# (c) Variable reduction vs CAST/MLP AUC ratio
+# (c) Interaction Complexity vs CAST/MLP AUC ratio
 # ══════════════════════════════════════════════════════════════
 cast_mlp <- d %>%
     filter(model %in% c("CAST", "MLP")) %>%
-    select(species, family, model, auc_mean) %>%
-    pivot_wider(names_from = model, values_from = auc_mean, values_fn = max) %>%
-    filter(!is.na(CAST), !is.na(MLP)) %>%
-    mutate(auc_ratio = CAST / MLP)
+    select(species, family, model, auc_mean, n_interactions) %>%
+    pivot_wider(names_from = model, values_from = c(auc_mean, n_interactions), names_glue = "{model}_{.value}", values_fn = max) %>%
+    filter(!is.na(CAST_auc_mean), !is.na(MLP_auc_mean)) %>%
+    mutate(auc_ratio = CAST_auc_mean / MLP_auc_mean)
 
-cast_screened <- screen %>%
-    group_by(species) %>%
-    summarise(n_total = n(), .groups = "drop")
+mean_ratio <- mean(cast_mlp$auc_ratio, na.rm = TRUE)
+mean_interactions <- mean(cast_mlp$CAST_n_interactions, na.rm = TRUE)
 
-cast_nvars <- d %>%
-    filter(model == "CAST") %>%
-    select(species, n_vars)
-
-var_red <- cast_mlp %>%
-    inner_join(cast_screened, by = "species") %>%
-    inner_join(cast_nvars, by = "species") %>%
-    mutate(reduction_pct = (n_total - n_vars) / n_total)
-
-mean_ratio <- mean(var_red$auc_ratio, na.rm = TRUE)
-mean_reduction <- mean(var_red$reduction_pct, na.rm = TRUE)
-
-pc <- ggplot(var_red, aes(x = reduction_pct, y = auc_ratio)) +
+pc <- ggplot(cast_mlp, aes(x = CAST_n_interactions, y = auc_ratio)) +
     geom_hline(yintercept = 1, linetype = "dashed", color = "grey40", linewidth = 0.6) +
     geom_point(aes(color = family), size = 2.5, alpha = 0.8) +
     geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dashed", linewidth = 0.5) +
-    annotate("rect",
-        xmin = 0, xmax = 1, ymin = 0.98, ymax = 1.10,
-        alpha = 0.08, fill = "#2980B9"
-    ) +
-    annotate("text",
-        x = 0.7, y = 1.06,
-        label = "Parsimonious & competitive",
-        fontface = "italic", size = 3, color = "#2980B9"
-    ) +
-    scale_x_continuous(labels = scales::percent) +
-    scale_y_continuous(limits = c(min(var_red$auc_ratio, na.rm = TRUE) * 0.98, 1.10)) +
+    scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
+    scale_y_continuous(limits = c(min(cast_mlp$auc_ratio, na.rm = TRUE) * 0.99, max(max(cast_mlp$auc_ratio, na.rm = TRUE) * 1.01, 1.01))) +
     scale_color_brewer(palette = "Set1", name = "Family") +
     labs(
-        title = "(c) Parsimony: fewer variables, same accuracy",
+        title = "(c) Sparse interactions, competitive gain",
         subtitle = sprintf(
-            "Mean: %.0f%% variables removed, AUC ratio = %.3f",
-            mean_reduction * 100, mean_ratio
+            "Mean: %.1f DAG interactions, mean AUC ratio = %.3f",
+            mean_interactions, mean_ratio
         ),
-        x = "% variables screened out by CAST",
+        x = "Number of DAG-guided interactive features",
         y = "CAST AUC / MLP AUC"
     ) +
     theme_pub() +
