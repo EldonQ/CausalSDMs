@@ -1,6 +1,6 @@
-# 03_run_EcoISEA3H_multi_species.R
+# 03_run_Plant_multi_species.R
 # ==============================================================================
-# CAST v3 — Eco-ISEA3H Multi-Species Experiment (China Region)
+# CAST v3 — Plant Multi-Species Experiment (China Region)
 #
 # Pipeline per species:
 #   Step 1: Variables already VIF-screened (13 vars)
@@ -10,7 +10,7 @@
 #   Step 5: Causal Role Grouping
 #   Step 6: Unified comparison table (CAST, MLP_ATE, MLP, RF, Maxent, BRT)
 #
-# Input: E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready/species_data_screened/CAST_*_screened.csv
+# Input: E:/CausalSDMs/outputs/Plant/Res9/CAST_ready/species_data_screened/CAST_*_screened.csv
 # Output: E:/CausalSDMs/output/case2_eco/ (all_results_v3.csv, etc.)
 # ==============================================================================
 
@@ -29,12 +29,12 @@ for (pkg in pkgs) {
 if (!torch_is_installed()) torch::install_torch()
 
 # ---- Configuration ----
-REGION <- "China_Res9"
+REGION <- "Europe_Plant"
 n_runs <- 3
 seeds <- c(42, 71, 103)
 
-data_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready/species_data_screened"
-out_dir <- "E:/CausalSDMs/output/case2_eco"
+data_dir <- "E:/CausalSDMs/outputs/Plant/CAST_ready/species_data_screened"
+out_dir <- "E:/CausalSDMs/output/case4_plant"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ==============================================================================
@@ -271,7 +271,7 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw) {
 # Main Loop (Eco-ISEA3H Data)
 # ==============================================================================
 cat("======================================================================\n")
-cat(sprintf("  CAST Eco-ISEA3H Multi-Species Experiment: %s\n", REGION))
+cat(sprintf("  CAST Plant Multi-Species Experiment: %s\n", REGION))
 cat("======================================================================\n\n")
 
 # Load existing checkpoint if any
@@ -284,12 +284,12 @@ all_role_info <- data.frame()
 done_pairs <- character(0)
 
 checkpoint_paths <- list(
-    res = file.path(out_dir, "all_results_v3.csv"),
-    ate = file.path(out_dir, "all_ate_results_v3.csv"),
-    dag = file.path(out_dir, "all_dag_info_v3.csv"),
-    edg = file.path(out_dir, "all_dag_edges_v3.csv"),
-    scr = file.path(out_dir, "all_screening_v3.csv"),
-    rol = file.path(out_dir, "all_role_info_v3.csv")
+    res = file.path(out_dir, "all_results_plant.csv"),
+    ate = file.path(out_dir, "all_ate_results_plant.csv"),
+    dag = file.path(out_dir, "all_dag_info_plant.csv"),
+    edg = file.path(out_dir, "all_dag_edges_plant.csv"),
+    scr = file.path(out_dir, "all_screening_plant.csv"),
+    rol = file.path(out_dir, "all_role_info_plant.csv")
 )
 
 if (file.exists(checkpoint_paths$res)) {
@@ -328,7 +328,7 @@ cat(sprintf("  Found %d screened species datasets.\n", length(sp_files)))
 for (sp_idx in seq_along(sp_files)) {
     f <- sp_files[sp_idx]
     # Extact species name
-    sp_name_raw <- gsub("CAST_|_Res9_screened\\.csv$", "", basename(f))
+    sp_name_raw <- gsub("CAST_|_screened\\.csv$", "", basename(f))
     sp <- sp_name_raw
     pair_key <- paste(REGION, sp, sep = "___")
 
@@ -341,7 +341,7 @@ for (sp_idx in seq_along(sp_files)) {
 
     # Load data
     sp_df <- fread(f)
-    meta_cols <- c("HID", "lon", "lat", "species", "sid", "family", "category", "presence", "fraction")
+    meta_cols <- c("PlotObservationID", "Longitude", "Latitude", "species", "presence")
     env_cols <- setdiff(names(sp_df), meta_cols)
 
     # For Eco-ISEA3H we split into train/test using a 70/30 spatial split natively here

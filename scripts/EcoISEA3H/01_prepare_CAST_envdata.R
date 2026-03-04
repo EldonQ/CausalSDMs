@@ -12,7 +12,7 @@
 #   5. Saves per-species CSVs and a summary
 #
 # ── Configurable parameters ──────────────────────────────
-MIN_CELLS <- 200 # Minimum grid-cell coverage to include a species
+MIN_CELLS <- 100 # Minimum grid-cell coverage to include a species
 FRAC_THRES <- 0.0 # Fraction threshold to convert to presence (> this)
 # ─────────────────────────────────────────────────────────
 # ============================================================

@@ -20,7 +20,7 @@ library(ggplot2)
 library(corrplot)
 
 # ── Configurable ─────────────────────────────────────────
-VIF_THRESHOLD <- 10 # Standard threshold, some use 5
+VIF_THRESHOLD <- 5 # Threshold 5 follows Zuur et al. (2010) to ensure robust causal DAG learning and structure identifiability.
 MIN_CELLS <- 200 # Same as 01_prepare
 # ─────────────────────────────────────────────────────────
 
