@@ -10,8 +10,8 @@
 #   Step 5: Causal Role Grouping
 #   Step 6: Unified comparison table (CAST, MLP_ATE, MLP, RF, Maxent, BRT)
 #
-# Input: E:/CausalSDMs/outputs/Plant/Res9/CAST_ready/species_data_screened/CAST_*_screened.csv
-# Output: E:/CausalSDMs/output/case2_eco/ (all_results_v3.csv, etc.)
+# Input: E:/CausalSDMs/outputs/Plant/CAST_ready/species_data_screened/CAST_*_screened.csv
+# Output: E:/CausalSDMs/output/case4_plant/ (all_results_v3.csv, etc.)
 # ==============================================================================
 
 rm(list = ls())
@@ -548,5 +548,5 @@ for (sp_idx in seq_along(sp_files)) {
 }
 
 cat("\n======================================================================\n")
-cat("  All Eco-ISEA3H Species Processing Complete!\n")
+cat("  All Plant Species Processing Complete!\n")
 cat("======================================================================\n")
