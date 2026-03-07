@@ -19,7 +19,7 @@ gc()
 setwd("E:/CausalSDMs")
 
 # ---- Dependencies ----
-pkgs <- c("tidyverse", "data.table", "bnlearn", "pROC", "caret", "ranger", "maxnet", "gbm", "torch")
+pkgs <- c("tidyverse", "data.table", "bnlearn", "pROC", "caret", "ranger", "maxnet", "gbm", "torch", "grf")
 for (pkg in pkgs) {
     if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
         install.packages(pkg, dependencies = TRUE)
@@ -201,10 +201,12 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
     best_state <- NULL
     no_imp <- 0
     nan_count <- 0
+    history <- data.frame(epoch = integer(), train_loss = numeric(), val_auc = numeric())
     for (epoch in seq_len(epochs)) {
         current_lr <- if (epoch <= warmup_epochs) lr * epoch / warmup_epochs else 1e-5 + 0.5 * (lr - 1e-5) * (1 + cos(pi * (epoch - warmup_epochs) / (epochs - warmup_epochs)))
         for (pg in optimizer$param_groups) pg$lr <- current_lr
         model$train()
+        batch_losses <- c()
         coro::loop(for (batch in train_dl) {
             optimizer$zero_grad()
             logits <- model(batch$x)
@@ -216,16 +218,20 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
             loss$backward()
             nn_utils_clip_grad_norm_(model$parameters, max_norm = 1.0)
             optimizer$step()
+            batch_losses <- c(batch_losses, loss$item())
         })
+        epoch_loss <- if (length(batch_losses) > 0) mean(batch_losses) else NA
         model$eval()
         with_no_grad({
             vp <- val_pred_fn(model)
         })
         if (any(is.nan(vp))) {
             nan_count <- nan_count + 1
-            next
+            va <- 0
+        } else {
+            va <- tryCatch(as.numeric(pROC::auc(pROC::roc(y_val_vec, vp, quiet = TRUE))), error = function(e) 0)
         }
-        va <- tryCatch(as.numeric(pROC::auc(pROC::roc(y_val_vec, vp, quiet = TRUE))), error = function(e) 0)
+        history <- rbind(history, data.frame(epoch = epoch, train_loss = epoch_loss, val_auc = va))
         if (va > best_auc + 1e-4) {
             best_auc <- va
             best_state <- lapply(model$state_dict(), function(p) p$clone())
@@ -236,7 +242,7 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
         if (no_imp >= patience) break
     }
     if (!is.null(best_state)) model$load_state_dict(best_state)
-    list(model = model, best_val_auc = best_auc)
+    list(model = model, best_val_auc = best_auc, history = history)
 }
 
 flat_dataset <- dataset("FlatDS",
@@ -281,6 +287,8 @@ all_dag_info <- data.frame()
 all_dag_edges <- data.frame()
 all_screening <- data.frame()
 all_role_info <- data.frame()
+all_learning_curves <- data.frame()
+all_spatial_cate <- data.frame()
 done_pairs <- character(0)
 
 checkpoint_paths <- list(
@@ -289,7 +297,9 @@ checkpoint_paths <- list(
     dag = file.path(out_dir, "all_dag_info_v3.csv"),
     edg = file.path(out_dir, "all_dag_edges_v3.csv"),
     scr = file.path(out_dir, "all_screening_v3.csv"),
-    rol = file.path(out_dir, "all_role_info_v3.csv")
+    rol = file.path(out_dir, "all_role_info_v3.csv"),
+    lcv = file.path(out_dir, "all_learning_curves_v3.csv"),
+    spt = file.path(out_dir, "all_spatial_cate_v3.csv")
 )
 
 if (file.exists(checkpoint_paths$res)) {
@@ -299,6 +309,8 @@ if (file.exists(checkpoint_paths$res)) {
     if (file.exists(checkpoint_paths$edg)) all_dag_edges <- read.csv(checkpoint_paths$edg, stringsAsFactors = FALSE) %>% distinct(region, species, from, to, .keep_all = TRUE)
     if (file.exists(checkpoint_paths$scr)) all_screening <- read.csv(checkpoint_paths$scr, stringsAsFactors = FALSE) %>% distinct(region, species, variable, .keep_all = TRUE)
     if (file.exists(checkpoint_paths$rol)) all_role_info <- read.csv(checkpoint_paths$rol, stringsAsFactors = FALSE) %>% distinct(region, species, variable, .keep_all = TRUE)
+    if (file.exists(checkpoint_paths$lcv)) all_learning_curves <- read.csv(checkpoint_paths$lcv, stringsAsFactors = FALSE)
+    if (file.exists(checkpoint_paths$spt)) all_spatial_cate <- read.csv(checkpoint_paths$spt, stringsAsFactors = FALSE)
 
     done_count <- all_results %>%
         group_by(region, species) %>%
@@ -319,6 +331,8 @@ if (file.exists(checkpoint_paths$res)) {
         all_dag_edges <- filter_inc(all_dag_edges)
         all_screening <- filter_inc(all_screening)
         all_role_info <- filter_inc(all_role_info)
+        all_learning_curves <- filter_inc(all_learning_curves)
+        all_spatial_cate <- filter_inc(all_spatial_cate)
     }
 }
 
@@ -353,7 +367,9 @@ for (sp_idx in seq_along(sp_files)) {
     selected_vars <- env_cols
 
     # --- Step 2: DAG ---
-    env_for_dag <- train_data[, ..selected_vars, drop = FALSE]
+    # CRITICAL FIX: Include 'presence' in DAG learning so that the structure is species-specific!
+    # Without it, the DAG is learned only on identical environmental grids, yielding the same dag_density for all.
+    env_for_dag <- train_data[, c(selected_vars, "presence"), with = FALSE]
 
     # Cast all specified variables to numeric for bnlearn, avoiding "type: integer" issue
     env_for_dag_df <- as.data.frame(env_for_dag)
@@ -365,14 +381,23 @@ for (sp_idx in seq_along(sp_files)) {
     set.seed(42)
     boot_str <- bnlearn::boot.strength(env_for_dag_df, R = 100, algorithm = "hc", algorithm.args = list(score = "bic-g"))
     strong_edges <- boot_str %>% filter(strength >= 0.7, direction >= 0.6)
+
+    # Exclude edges connecting to 'presence' when passing DAG edges to the rest of the pipeline
+    # The downstream structure encoding expects ONLY environmental variables.
+    strong_env_edges <- strong_edges %>%
+        filter(from != "presence" & to != "presence")
+
+    # Calculate density based on environmental edges
     n_possible <- length(selected_vars) * (length(selected_vars) - 1) / 2
-    dag_density <- nrow(strong_edges) / max(n_possible, 1)
-    node_outdeg <- strong_edges %>%
+    dag_density <- nrow(strong_env_edges) / max(n_possible, 1)
+
+    node_outdeg <- strong_env_edges %>%
         group_by(from) %>%
         summarise(out_degree = n(), .groups = "drop")
 
-    all_dag_info <- rbind(all_dag_info, data.frame(region = REGION, species = sp, n_edges = nrow(strong_edges), dag_density = dag_density, n_vars_after_vif = length(selected_vars), stringsAsFactors = FALSE))
-    if (nrow(strong_edges) > 0) all_dag_edges <- rbind(all_dag_edges, strong_edges %>% select(from, to, strength, direction) %>% mutate(region = REGION, species = sp))
+
+    all_dag_info <- rbind(all_dag_info, data.frame(region = REGION, species = sp, n_edges = nrow(strong_env_edges), dag_density = dag_density, n_vars_after_vif = length(selected_vars), stringsAsFactors = FALSE))
+    if (nrow(strong_env_edges) > 0) all_dag_edges <- rbind(all_dag_edges, strong_env_edges %>% select(from, to, strength, direction) %>% mutate(region = REGION, species = sp))
 
     # --- Step 3: ATE ---
     Y_full <- train_data$presence
@@ -431,12 +456,12 @@ for (sp_idx in seq_along(sp_files)) {
     all_screening <- rbind(all_screening, screening_df)
 
     # --- Step 5: Causal Roles ---
-    role_df <- assign_causal_roles(cast_vars, strong_edges, n_groups = 3)
+    role_df <- assign_causal_roles(cast_vars, strong_env_edges, n_groups = 3)
     role_df$species <- sp
     role_df$region <- REGION
     all_role_info <- rbind(all_role_info, role_df)
 
-    cat(sprintf("    DAG:%d(d=%.2f) | ATE:%d/%d | screened:%d\n", nrow(strong_edges), dag_density, n_sig, length(selected_vars), length(cast_vars)))
+    cat(sprintf("    DAG:%d(d=%.2f) | ATE:%d/%d | screened:%d\n", nrow(strong_env_edges), dag_density, n_sig, length(selected_vars), length(cast_vars)))
 
     # ═══ Step 6: Modeling ═══
     y_train_all <- train_data$presence
@@ -451,8 +476,8 @@ for (sp_idx in seq_along(sp_files)) {
     X_test_full_sc <- as.data.frame(scale(X_test_full, center = X_means_full, scale = X_sds_full))
     X_test_full_sc[is.na(X_test_full_sc)] <- 0
 
-    cast_train_info <- build_cast_features(X_train_full_sc, selected_vars, cast_vars, strong_edges, ate_results, boot_str)
-    cast_test_info <- build_cast_features(X_test_full_sc, selected_vars, cast_vars, strong_edges, ate_results, boot_str)
+    cast_train_info <- build_cast_features(X_train_full_sc, selected_vars, cast_vars, strong_env_edges, ate_results, boot_str)
+    cast_test_info <- build_cast_features(X_test_full_sc, selected_vars, cast_vars, strong_env_edges, ate_results, boot_str)
     X_train_cast <- cast_train_info$data
     X_test_cast <- cast_test_info$data
     n_cast_interactions <- cast_train_info$n_interactions
@@ -480,6 +505,7 @@ for (sp_idx in seq_along(sp_files)) {
     run_nn <- function(name, X_tr, X_val, X_te, hidden_sz) {
         aucs <- numeric(n_runs)
         tsss <- numeric(n_runs)
+        model_curves <- data.frame()
         for (ri in 1:n_runs) {
             torch_manual_seed(seeds[ri])
             set.seed(seeds[ri])
@@ -490,6 +516,13 @@ for (sp_idx in seq_along(sp_files)) {
                     vt <- torch_tensor(as.matrix(X_val), dtype = torch_float())
                     m <- CI_MLP(ncol(X_tr), hidden_sz, 0.2)
                     res <- train_nn(m, dl, function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()), y_val, epochs = 200, patience = 20, focal_alpha = focal_alpha)
+
+                    if (nrow(res$history) > 0) {
+                        res$history$run <- ri
+                        res$history$model <- name
+                        model_curves <- rbind(model_curves, res$history)
+                    }
+
                     res$model$eval()
                     with_no_grad({
                         tt <- torch_tensor(as.matrix(X_te), dtype = torch_float())
@@ -506,22 +539,31 @@ for (sp_idx in seq_along(sp_files)) {
             )
         }
         cat(sprintf("      %s: AUC=%.4f±%.4f\n", name, mean(aucs, na.rm = TRUE), sd(aucs, na.rm = TRUE)))
-        list(auc_mean = mean(aucs, na.rm = TRUE), auc_sd = sd(aucs, na.rm = TRUE), tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE))
+        list(auc_mean = mean(aucs, na.rm = TRUE), auc_sd = sd(aucs, na.rm = TRUE), tss_mean = mean(tsss, na.rm = TRUE), tss_sd = sd(tsss, na.rm = TRUE), curves = model_curves)
     }
 
     # CAST
     r_cast <- run_nn("CAST", X_tr_cast, X_val_cast, X_test_cast, hidden_size_cast)
-    sp_results <- rbind(sp_results, data.frame(region = REGION, species = sp, model = "CAST", var_set = "full+causal", n_vars = length(selected_vars), n_interactions = n_cast_interactions, n_features_total = cast_train_info$n_total, n_dag_edges = nrow(strong_edges), dag_density = dag_density, auc_mean = r_cast$auc_mean, auc_sd = r_cast$auc_sd, tss_mean = r_cast$tss_mean, tss_sd = r_cast$tss_sd, n_success = 3, stringsAsFactors = FALSE))
+    sp_curves <- r_cast$curves
+    sp_results <- rbind(sp_results, data.frame(region = REGION, species = sp, model = "CAST", var_set = "full+causal", n_vars = length(selected_vars), n_interactions = n_cast_interactions, n_features_total = cast_train_info$n_total, n_dag_edges = nrow(strong_env_edges), dag_density = dag_density, auc_mean = r_cast$auc_mean, auc_sd = r_cast$auc_sd, tss_mean = r_cast$tss_mean, tss_sd = r_cast$tss_sd, n_success = 3, stringsAsFactors = FALSE))
 
     # MLP_ATE
-    ate_tr_info <- build_cast_features(X_train_full_sc, selected_vars, character(0), strong_edges, ate_results, boot_str)
-    ate_te_info <- build_cast_features(X_test_full_sc, selected_vars, character(0), strong_edges, ate_results, boot_str)
+    ate_tr_info <- build_cast_features(X_train_full_sc, selected_vars, character(0), strong_env_edges, ate_results, boot_str)
+    ate_te_info <- build_cast_features(X_test_full_sc, selected_vars, character(0), strong_env_edges, ate_results, boot_str)
     r_ate <- run_nn("MLP_ATE", ate_tr_info$data[-val_idx, ], ate_tr_info$data[val_idx, ], ate_te_info$data, hidden_size_full)
+    if (!is.null(r_ate$curves)) sp_curves <- rbind(sp_curves, r_ate$curves)
     sp_results <- rbind(sp_results, data.frame(region = REGION, species = sp, model = "MLP_ATE", var_set = "full", n_vars = length(selected_vars), n_interactions = 0, n_features_total = length(selected_vars), n_dag_edges = 0, dag_density = 0, auc_mean = r_ate$auc_mean, auc_sd = r_ate$auc_sd, tss_mean = r_ate$tss_mean, tss_sd = r_ate$tss_sd, n_success = 3, stringsAsFactors = FALSE))
 
     # MLP
     r_mlp <- run_nn("MLP", X_tr_full, X_val_full, X_test_full_sc, hidden_size_full)
+    if (!is.null(r_mlp$curves)) sp_curves <- rbind(sp_curves, r_mlp$curves)
     sp_results <- rbind(sp_results, data.frame(region = REGION, species = sp, model = "MLP", var_set = "full", n_vars = length(selected_vars), n_interactions = 0, n_features_total = length(selected_vars), n_dag_edges = 0, dag_density = 0, auc_mean = r_mlp$auc_mean, auc_sd = r_mlp$auc_sd, tss_mean = r_mlp$tss_mean, tss_sd = r_mlp$tss_sd, n_success = 3, stringsAsFactors = FALSE))
+
+    if (!is.null(sp_curves) && nrow(sp_curves) > 0) {
+        sp_curves$region <- REGION
+        sp_curves$species <- sp
+        all_learning_curves <- rbind(all_learning_curves, sp_curves)
+    }
 
     # Trad SDMs
     baselines <- c("RF", "Maxent", "BRT")
@@ -537,6 +579,42 @@ for (sp_idx in seq_along(sp_files)) {
         sp_results <- rbind(sp_results, data.frame(region = REGION, species = sp, model = b, var_set = "full", n_vars = length(selected_vars), n_interactions = 0, n_features_total = length(selected_vars), n_dag_edges = 0, dag_density = 0, auc_mean = ev["auc"], auc_sd = 0, tss_mean = ev["tss"], tss_sd = 0, n_success = if (is.na(ev["auc"])) 0 else 1, stringsAsFactors = FALSE))
     }
 
+    # ═══ Step 7: Real Spatial CATE (grf causal_forest) ═══
+    # Select top 3 significant causal variables to calculate full spatial CATEs
+    cate_vars <- cast_vars[cast_vars %in% ate_results$variable[ate_results$significant == TRUE]]
+    if (length(cate_vars) == 0) {
+        cate_vars <- cast_vars[1:min(3, length(cast_vars))]
+    } else {
+        cate_vars <- cate_vars[1:min(3, length(cate_vars))]
+    }
+
+    cate_df_list <- list()
+    for (cv in cate_vars) {
+        T_cont <- X_full[[cv]]
+        W_covs <- X_full[, setdiff(selected_vars, cv), drop = FALSE]
+        cf <- tryCatch(
+            {
+                grf::causal_forest(X = as.matrix(W_covs), Y = Y_full, W = T_cont, num.trees = 500, seed = 42)
+            },
+            error = function(e) NULL
+        )
+
+        if (!is.null(cf)) {
+            X_all <- as.data.frame(sp_df[, ..selected_vars, drop = FALSE])
+            W_all <- as.matrix(X_all[, setdiff(selected_vars, cv), drop = FALSE])
+            cate_preds <- predict(cf, W_all, estimate.variance = FALSE)$predictions
+            cate_df_list[[cv]] <- data.frame(
+                region = REGION, species = sp, variable = cv,
+                lon = sp_df$lon, lat = sp_df$lat, cate = as.numeric(cate_preds),
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    if (length(cate_df_list) > 0) {
+        sp_cate_res <- do.call(rbind, cate_df_list)
+        all_spatial_cate <- rbind(all_spatial_cate, sp_cate_res)
+    }
+
     # Save checkpoint
     all_results <- rbind(all_results, sp_results)
     write.csv(all_results, checkpoint_paths$res, row.names = FALSE)
@@ -545,6 +623,8 @@ for (sp_idx in seq_along(sp_files)) {
     write.csv(all_dag_edges, checkpoint_paths$edg, row.names = FALSE)
     write.csv(all_screening, checkpoint_paths$scr, row.names = FALSE)
     write.csv(all_role_info, checkpoint_paths$rol, row.names = FALSE)
+    write.csv(all_learning_curves, checkpoint_paths$lcv, row.names = FALSE)
+    write.csv(all_spatial_cate, checkpoint_paths$spt, row.names = FALSE)
 }
 
 cat("\n======================================================================\n")

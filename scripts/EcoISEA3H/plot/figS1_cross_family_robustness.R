@@ -1,5 +1,5 @@
 ################################################################################
-# Fig S3 (Eco): Cross-Family Robustness — Supplementary
+# Fig S1 (Eco): Cross-Family Robustness — Supplementary
 #   [Consolidates former fig5_cross_family_robustness_eco.R]
 #
 # Narrative: CAST predictive gains are consistent across taxonomic families,
@@ -19,7 +19,7 @@
 #   outputs/EcoISEA3H/Res9/CAST_ready/CAST_Species_Summary.csv
 #
 # Run: setwd("E:/CausalSDMs")
-#      source("scripts/EcoISEA3H/plot/figS3_cross_family_robustness_eco.R")
+#      source("scripts/EcoISEA3H/plot/figS1_cross_family_robustness.R")
 ################################################################################
 
 rm(list = ls())
@@ -182,10 +182,10 @@ pc <- ggplot(
 # ══════════════════════════════════════════════════════════════════════════════
 # Combine
 # ══════════════════════════════════════════════════════════════════════════════
-figS3 <- pa / (pb | pc) +
+figS1 <- pa / (pb | pc) +
     plot_layout(heights = c(2, 1)) +
     plot_annotation(
-        title = "Fig S3 (Eco)  Cross-Family Robustness of CAST",
+        title = "Fig S1 (Eco)  Cross-Family Robustness of CAST",
         subtitle = paste0(
             "Performance comparisons stratified by Taxonomic Family demonstrate ",
             "that CAST's predictive gains are not confined to any particular clade ",
@@ -200,8 +200,8 @@ figS3 <- pa / (pb | pc) +
         )
     )
 
-ggsave(file.path(fig_dir, "figS3_cross_family_robustness_eco.png"),
-    figS3,
+ggsave(file.path(fig_dir, "figS1_cross_family_robustness_eco.png"),
+    figS1,
     width = 14, height = 14, dpi = 300, bg = "white"
 )
-cat("Saved figS3_cross_family_robustness_eco.png\n")
+cat("Saved figS1_cross_family_robustness_eco.png\n")

@@ -1,26 +1,21 @@
 ################################################################################
-# Fig 5 (Eco): Causal Inference Decouples Predictive Importance from
-#              Ecological Mechanism  [INTERPRETABILITY PANEL]
+# Fig 5: Causal Inference Decouples Predictive Importance from Ecological
+#          Mechanism
 #
-# Narrative: Traditional variable importance (RF permutation) mixes causal
-#   effects with spurious collinearity. DML-based ATE isolates the direct
-#   causal contribution of each environmental driver. The low / discordant
-#   Spearman ρ between RF-rank and |ATE|-rank demonstrates that machine
-#   learning importance is a poor proxy for ecological mechanism.
+# Shows that RF permutation importance ranks and |ATE| causal effect ranks
+# are frequently discordant, demonstrating that correlation-based importance
+# ≠ causal mechanism.
 #
-# Panel (a): Slope chart — mean RF-rank vs mean |ATE|-rank per variable
-#            (aggregated across all species; crossing lines = discordance)
+# Panel (a): Slope plot — variable-level mean rank (RF vs |ATE|) across species
 # Panel (b): Histogram of per-species Spearman ρ (RF rank vs |ATE| rank)
-#            — distribution centred well below 1 confirms systematic divergence
-# Panel (c): Lollipop — top-10 variables ranked by |ATE| vs ranked by RF
-#            importance (side-by-side bars, difference highlighted)
+# Panel (c): Dumbbell plot — top variables comparing RF vs |ATE| rank
 #
 # Data required:
 #   output/case2_eco/all_screening_v3.csv
 #   output/case2_eco/all_ate_results_v3.csv
 #
 # Run: setwd("E:/CausalSDMs")
-#      source("scripts/EcoISEA3H/plot/fig5_importance_vs_causal_eco.R")
+#      source("scripts/EcoISEA3H/plot/fig5_importance_vs_causal.R")
 ################################################################################
 
 rm(list = ls())
@@ -32,18 +27,19 @@ dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 library(tidyverse)
 library(patchwork)
 
+# ── Theme ────────────────────────────────────────────────────────────────────
 theme_pub <- function(base_size = 11) {
     theme_minimal(base_size = base_size, base_family = "sans") +
         theme(
             panel.grid.minor  = element_blank(),
             axis.title        = element_text(face = "bold"),
-            plot.title        = element_text(face = "bold", hjust = 0.5),
-            plot.subtitle     = element_text(hjust = 0.5, color = "grey40"),
+            plot.title        = element_text(face = "bold", hjust = 0),
+            plot.subtitle     = element_text(hjust = 0, color = "grey40", size = 9),
             legend.background = element_rect(fill = "white", color = NA)
         )
 }
 
-# ── Load data ─────────────────────────────────────────────────────────────────
+# ── Load data ────────────────────────────────────────────────────────────────
 screen <- read.csv("output/case2_eco/all_screening_v3.csv",
     stringsAsFactors = FALSE
 )
@@ -55,7 +51,7 @@ ate <- read.csv("output/case2_eco/all_ate_results_v3.csv",
         significant = as.logical(significant)
     )
 
-# Join ATE coefficients into screening table
+# ── Join and compute ranks ──────────────────────────────────────────────────
 rank_data <- screen %>%
     left_join(
         ate %>% select(region, species, variable, ate_coef = coef),
@@ -65,12 +61,13 @@ rank_data <- screen %>%
     group_by(species) %>%
     mutate(
         rank_rf  = rank(-importance, ties.method = "average"),
-        rank_ate = rank(-abs(ate_coef), ties.method = "average", na.last = TRUE)
+        rank_ate = rank(-abs(ate_coef), ties.method = "average"),
+        n_vars   = n()
     ) %>%
     ungroup()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Panel (a): Slope chart — mean RF-rank vs mean |ATE|-rank across ALL species
+# Panel (a): Slope plot — variable-level mean rank
 # ══════════════════════════════════════════════════════════════════════════════
 slope_dat <- rank_data %>%
     group_by(variable) %>%
@@ -80,14 +77,13 @@ slope_dat <- rank_data %>%
         n_sp          = n(),
         .groups       = "drop"
     ) %>%
-    filter(n_sp >= 5) %>% # require enough species for stability
+    filter(n_sp >= 5) %>%
     mutate(
         y_left = rank(mean_rank_rf),
         y_right = rank(mean_rank_ate),
         dir_change = sign(y_right - y_left)
     )
 
-# Colour by direction of rank change
 pa <- ggplot(slope_dat) +
     geom_segment(
         aes(
@@ -96,41 +92,41 @@ pa <- ggplot(slope_dat) +
         ),
         linewidth = 1.1, alpha = 0.8
     ) +
-    geom_point(aes(x = 1, y = y_left), size = 2.8, color = "#27AE60") +
-    geom_point(aes(x = 2, y = y_right), size = 2.8, color = "#C0392B") +
-    geom_text(aes(x = 0.90, y = y_left, label = variable),
-        hjust = 1, size = 2.8, fontface = "bold"
+    geom_point(aes(x = 1, y = y_left), size = 2, color = "#27AE60") +
+    geom_point(aes(x = 2, y = y_right), size = 2, color = "#C0392B") +
+    geom_text(aes(x = 0.85, y = y_left, label = variable),
+        size = 2.5, hjust = 1
     ) +
-    geom_text(aes(x = 2.10, y = y_right, label = variable),
-        hjust = 0, size = 2.8, fontface = "bold"
-    ) +
-    scale_x_continuous(
-        limits = c(0.35, 2.65),
-        breaks = c(1, 2),
-        labels = c("RF importance\nrank", "|ATE| rank")
+    geom_text(aes(x = 2.15, y = y_right, label = variable),
+        size = 2.5, hjust = 0
     ) +
     scale_color_manual(
         values = c("-1" = "#E74C3C", "0" = "grey60", "1" = "#2980B9"),
-        labels = c("-1" = "Rank drops", "0" = "Unchanged", "1" = "Rank rises"),
-        name   = "Rank change\n(RF → ATE)"
+        guide = "none"
     ) +
-    scale_y_reverse() +
+    scale_x_continuous(
+        breaks = c(1, 2),
+        labels = c("RF importance\nrank", "|ATE| causal\nrank"),
+        limits = c(0.3, 2.7)
+    ) +
     labs(
-        title = "(a) RF importance rank vs |ATE| causal rank",
-        subtitle = "Mean rank across all species | Line crossings indicate systematic discordance",
+        title = "(a) Variable-level rank discordance",
+        subtitle = "Mean rank across all species | Line crossings = systematic discordance",
         x = "", y = "Mean rank across species (1 = highest)"
     ) +
     theme_pub() +
     theme(legend.position = "right")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Panel (b): Per-species Spearman ρ distribution
+# Panel (b): Per-species Spearman ρ histogram
 # ══════════════════════════════════════════════════════════════════════════════
 spearman_per_sp <- rank_data %>%
-    filter(!is.na(rank_rf), !is.na(rank_ate)) %>%
     group_by(species) %>%
     summarise(
-        rho = cor(rank_rf, rank_ate, method = "spearman", use = "pairwise"),
+        rho = tryCatch(
+            cor(rank_rf, rank_ate, method = "spearman", use = "complete.obs"),
+            error = function(e) NA_real_
+        ),
         n_vars = n(),
         .groups = "drop"
     ) %>%
@@ -147,34 +143,23 @@ pb <- ggplot(spearman_per_sp, aes(x = rho)) +
     ) +
     geom_vline(
         xintercept = mean_rho, linetype = "dashed",
-        color = "#C0392B", linewidth = 0.9
-    ) +
-    geom_vline(
-        xintercept = 1, linetype = "dotted",
-        color = "grey50", linewidth = 0.6
-    ) +
-    geom_vline(
-        xintercept = 0, linetype = "dotted",
-        color = "grey50", linewidth = 0.6
+        color = "#C0392B", linewidth = 0.7
     ) +
     annotate("text",
-        x = mean_rho + 0.06, y = Inf, vjust = 2,
-        label = sprintf("Mean ρ = %.2f", mean_rho),
-        fontface = "bold", size = 3.4, color = "#C0392B"
+        x = mean_rho, y = Inf,
+        label = sprintf("Mean ρ = %.3f", mean_rho),
+        vjust = 1.5, hjust = -0.1, size = 3.5,
+        fontface = "bold", color = "#C0392B"
     ) +
     annotate("text",
-        x = -0.95, y = Inf, vjust = 2,
-        label = sprintf("%.0f%% of\nspecies\nρ < 0.5", pct_low),
-        fontface = "italic", size = 3.0, color = "#2980B9", hjust = 0
-    ) +
-    scale_x_continuous(
-        limits = c(-1.05, 1.05),
-        breaks = seq(-1, 1, 0.5)
+        x = 0.25, y = Inf,
+        label = sprintf("%.0f%% species\nhave ρ < 0.5", pct_low),
+        vjust = 2.5, size = 3.2, fontface = "italic", color = "grey40"
     ) +
     labs(
-        title = "(b) Per-species Spearman ρ: RF rank vs |ATE| rank",
+        title = "(b) Per-species rank concordance",
         subtitle = sprintf(
-            "n = %d species | Low ρ indicates causal rank ≠ predictive rank",
+            "n = %d species | Low ρ = causal rank ≠ predictive rank",
             n_sp_rho
         ),
         x = "Spearman ρ  (RF importance rank vs |ATE| rank)",
@@ -183,24 +168,22 @@ pb <- ggplot(spearman_per_sp, aes(x = rho)) +
     theme_pub()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Panel (c): Top-N variables — RF rank vs ATE rank side-by-side
+# Panel (c): Dumbbell for top variables
 # ══════════════════════════════════════════════════════════════════════════════
-# Variables with highest absolute discrepancy between mean RF rank and mean |ATE| rank
 top_vars <- slope_dat %>%
-    mutate(rank_gap = abs(y_right - y_left)) %>%
-    arrange(desc(rank_gap)) %>%
-    slice_head(n = 12) %>%
+    arrange(mean_rank_rf) %>%
+    slice_head(n = 10) %>%
     pull(variable)
 
 top_dat <- slope_dat %>%
     filter(variable %in% top_vars) %>%
     pivot_longer(
         cols = c(y_left, y_right),
-        names_to = "metric",
-        values_to = "rank_val"
+        names_to = "metric", values_to = "rank_val"
     ) %>%
     mutate(
-        metric = factor(metric,
+        metric = factor(
+            metric,
             levels = c("y_left", "y_right"),
             labels = c("RF importance rank", "|ATE| causal rank")
         )
@@ -214,18 +197,16 @@ pc <- ggplot(top_dat, aes(
     geom_line(color = "grey70", linewidth = 0.8) +
     geom_point(size = 3.5, alpha = 0.9) +
     scale_color_manual(
-        values = c("RF importance rank" = "#27AE60", "|ATE| causal rank" = "#C0392B"),
-        name   = ""
-    ) +
-    scale_x_continuous(
-        breaks = scales::pretty_breaks(n = 6),
-        trans  = "reverse" # lower rank = better = right side
+        values = c(
+            "RF importance rank" = "#27AE60",
+            "|ATE| causal rank" = "#C0392B"
+        ),
+        name = ""
     ) +
     labs(
-        title = "(c) Rank discordance: top-discrepant variables",
-        subtitle = "Variables with largest gap between RF rank and |ATE| rank",
-        x = "Mean rank (lower rank = higher position)",
-        y = ""
+        title = "(c) Top-10 variables: RF vs causal rank",
+        subtitle = "Large horizontal gaps = importance-mechanism discordance",
+        x = "Rank position", y = ""
     ) +
     theme_pub() +
     theme(legend.position = "bottom")
@@ -236,23 +217,22 @@ pc <- ggplot(top_dat, aes(
 fig5 <- (pa | pb) / pc +
     plot_layout(heights = c(1, 1.1)) +
     plot_annotation(
-        title = "Fig 5 (Eco)  Causal Inference Decouples Predictive Importance from Ecological Mechanism",
+        title = "Fig 5  Causal inference decouples predictive importance from ecological mechanism",
         subtitle = paste0(
-            "RF importance ranks reflect collinearity structure; DML-ATE ranks measure ",
-            "direct causal effects. The systematic discordance (low Spearman ρ) ",
-            "reveals that correlational importance is a poor proxy for ecological mechanism."
+            "RF permutation importance ranks and |ATE| causal effect ranks show ",
+            "low concordance, demonstrating that predictive relevance ≠ causal mechanism"
         ),
         theme = theme(
             plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
             plot.subtitle = element_text(
-                face = "italic", size = 9, hjust = 0.5,
+                face = "italic", size = 9.5, hjust = 0.5,
                 color = "grey40"
             )
         )
     )
 
-ggsave(file.path(fig_dir, "fig5_importance_vs_causal_eco.png"),
+ggsave(file.path(fig_dir, "fig5_importance_vs_causal.png"),
     fig5,
     width = 14, height = 12, dpi = 300, bg = "white"
 )
-cat("Saved fig5_importance_vs_causal_eco.png\n")
+cat("✓ Saved fig5_importance_vs_causal.png\n")
