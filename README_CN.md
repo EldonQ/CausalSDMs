@@ -1,74 +1,71 @@
-# CausalSDMs 🌊🐟
-
-### 基于因果推断的河流网络物种分布建模框架
+# CAST: 物种分布模型因果分析与变量筛选工具包
 
 [![R](https://img.shields.io/badge/R-%E2%89%A54.0-blue.svg)](https://www.r-project.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-[![Status](https://img.shields.io/badge/Status-Research_Prototype-orange.svg)]()
+[![Status](https://img.shields.io/badge/Status-Research_Article-orange.svg)]()
 
 > **[English Version (英文原版)](README.md)**
 
-## 📖 项目概述
+## 📖 简介
 
-**CausalSDMs** 是一个创新的科研代码库，旨在将淡水生物多样性的预测研究从**相关性预测**推进到**机制性推断**。通过将**因果发现**（贝叶斯网络）与传统的**物种分布模型（SDMs）**相结合，本项目致力于解决复杂河流网络中区分真实因果驱动因子与伪相关变量的难题。
+**CAST (Causal Analysis and Screening Toolkit)** 是一个新的方法学框架，旨在将物种分布模型（SDMs）从**相关性预测**推进至**因果机制推断**。CAST 通过整合因果发现算法（有向无环图）与双重机器学习（DML），显式地将真实的生态因果驱动因子与虚假的统计相关性进行解耦。
 
-本项目以中国全境淡水鱼类分布为例，利用 **EarthEnv-Streams**（加权上游集水区环境变量）数据，精准捕捉河流生物真实的生境暴露特征。
+本仓库包含了 CAST 框架的官方实现代码，涵盖从环境数据处理、因果推断到构建“因果启发的神经网络（CI-MLP）”的完整分析流水线。
 
-## ✨ 核心特性
+## ✨ 核心功能
 
-- **🌊 河流网络一致性**：采用1km分辨率的“上游加权”变量（如汇流累积量、水文气候聚合指标），而非传统的陆地栅格覆盖，符合河流连通性特征。
-- **🔍 因果结构学习**：应用基于约束（**PC算法**）和基于评分（**Hill-Climbing**）的算法，发现稳定的环境依赖网络（DAGs）。
-- **📉 因果变量筛选**：通过剔除非因果混杂因子，将预测变量维度降低约 **38%**，同时保持甚至提高了模型性能（AUC/TSS）。
-- **🎯 异质性处理效应**：利用因果森林（Causal Forests）估计条件平均处理效应（**CATE**），识别具有高保护价值的空间区域。
-- **🔮 稳健的未来预测**：量化并区分了**结构不确定性**（算法差异）与**情景不确定性**（排放路径差异）。
+- **自动化因果发现**：基于观测数据学习环境因子的因果有向无环图 (DAG)，提炼环境变量间的层级与依赖关系。
+- **因果效应估计**：利用双重机器学习（Double Machine Learning）量化环境变量的平均处理效应 (ATE)，将真实的生态机制与纯粹的预测重要性剥离。
+- **自适应特征筛选**：提供一套综合评分算法，基于局部 DAG 拓扑结构、因果效应显著性及预测重要性，剔除冗余和伪相关变量。
+- **因果启发的神经网络 (CI-MLP)**：将连续的因果结构先验（基于 ATE 算得的特征权重、基于 DAG 提取的交互项）嵌入深度学习架构中，显著提升模型的泛化能力并有效防止过拟合。
+- **解译空间异质性**：通过因果森林 (Causal Forests) 评估条件平均处理效应 (CATE)，绘制环境变量驱动力的空间异质性地图。
 
 ## 📂 目录结构
 
 ```text
 E:\CausalSDMs\
-├── data-main/               # 核心环境数据 (矢量/栅格)
-├── scripts/                 # 分析流程脚本 (按步骤编号)
-│   ├── 01-04_...           # 数据准备与共线性分析
-│   ├── 05-08_...           # SDM模型训练 (Maxent, RF, GAM, NN) 与评估
-│   ├── 09-13_...           # 变量重要性、响应曲线与制图
-│   ├── 14_causal...        # 因果发现与ATE估计
-│   └── 15_future...        # 未来气候预测与模型重训练
-├── figures/                 # 论文图表 (Nature标准格式)
-├── output/                  # 模型对象、中间CSV结果与栅格文件
-├── manuscript_*.md          # 论文草稿与核心内容
-└── README_CN.md             # 中文说明文档
+├── data-main/               # 环境基础数据 (地形、气候、水文数据集)
+├── scripts/EcoISEA3H/       # CAST 核心分析代码库
+│   ├── 01_data_preparation...  # 数据聚合与背景点采样
+│   ├── 02_main_cast_pipeline/  # DAG 学习、ATE 估计与 CAST 变量筛选
+│   ├── 03_run_Eco_multi_sp/    # 模型训练 (CI-MLP 构建) 及基线模型对比
+│   └── plot/                   # 结果图表渲染代码 (对标 Nature 格式)
+├── outputs/                 # 中间结果、连续权重系数及表格计算结果
+├── figures/                 # 论文正式发布的最终图表
+└── manuscript_mee_cn.md     # 论文中文底稿及修订历史
 ```
 
-## 🚀 分析流程
+## 🚀 核心工作流
 
-为确保可重复性，分析流程脚本已按顺序编号：
+CAST 提供结构化的模块代码，核心执行步骤如下：
 
-1.  **数据准备**：清洗分布点记录并提取 EarthEnv-Streams 变量 (`01_data_preparation_NEW.R`)。
-2.  **基础建模**：使用全变量集训练四种算法（Maxent, Random Forest, GAM, NN） (`05_model_maxnet.R` 至 `07_model_gam.R`)。
-3.  **因果发现**：
-    *   使用 PC 和 Hill-Climbing 算法推断因果有向无环图 (DAG) (`14_causal_discovery.R`)。
-    *   使用双重机器学习 (Double Machine Learning) 估计平均处理效应 (ATE) (`14c_batch_ate_estimation.R`)。
-4.  **因果驱动重训练**：仅使用经因果验证的预测因子重新训练模型 (`15b_causal_informed_retraining.R`)。
-5.  **保护规划**：生成 CATE 图与未来适宜性预测 (`11d_cate_maps.R`, `15_future_env_projection.R`)。
+1.  **因果图学习与 ATE 估计**
+    运行基于约束和评分的拓扑学习，并执行 DML 算法以估算因果效应。
+    *脚本*: `scripts/EcoISEA3H/02_cast_screening_pipeline.R`
+2.  **自适应因果变量筛选**
+    计算 DAG、ATE 及 RF 三大组件得分，输出用于最终生态建模的纯净因果变量子集。
+    *脚本*: `scripts/EcoISEA3H/02_cast_screening_pipeline.R`
+3.  **CI-MLP 神经网络训练**
+    构建因果启发的感知机网络（导入 ATE 权重与 DAG 交互项），并与 FlatNN、RF、Maxent 等基线模型执行标准化对比评估。
+    *脚本*: `scripts/EcoISEA3H/03_run_Eco_multi_species.R`
+4.  **因果效应空间制图 (CATE)**
+    构建高分辨率的条件平均处理效应空间分布模型，辅助局地保护决策。
+    *脚本*: `scripts/EcoISEA3H/04_spatial_cate.R`
 
-## 📊 关键发现
+## 🛠️ 环境与依赖
 
-*   **高效性**：因果筛选将预测因子从 **47个减少至约29个**，显著提高了模型的可迁移性。
-*   **稳定性**：识别出稳定的因果模块结构：*地形 (Topography) → 气候 (Climate) → 土地覆盖/土壤 (Land Cover/Soil)*。
-*   **不确定性**：研究发现，在世纪中叶的预测中，结构（算法）不确定性显著超过了气候情景不确定性。
-
-## 🛠️ 环境要求
-
-*   **R** (版本 >= 4.0.0)
-*   **核心 R 包**: `maxnet`, `randomForest`, `mgcv`, `nnet`, `pcalg`, `bnlearn`, `grf`, `DoubleML`, `terra`, `sf`.
-*   **Python** (可选，用于特定可视化): `matplotlib`, `seaborn`.
+*   **R 语言环境** (版本 >= 4.1.0)
+*   **因果推断核心库**: `bnlearn`, `pcalg`, `DoubleML`, `grf`
+*   **机器学习算法库**: `keras`, `tensorflow`, `randomForest`, `maxnet`, `gbm`
+*   **空间分析**: `terra`, `sf`
+*   **图表可视化**: `ggplot2`, `patchwork`, `igraph`, `ggraph`
 
 ## 📜 引用
 
-如果您使用了本项目的代码或方法，请引用相关手稿：
+如果您在学术研究中使用了 CAST 分析框架，请引用我们关联的方法学论文：
 
-> *Causal inference reveals mechanism-driven freshwater fish distribution under climate change: a river network perspective.* (In Preparation/Review)
+> *Mechanism-driven species distribution modelling via causal structural learning and effect estimation.* (Under Review)
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详情请见 [LICENSE](LICENSE) 文件。
+本项目采用 MIT 许可证开源 - 详情请参阅 [LICENSE](LICENSE) 文件。
