@@ -11,7 +11,7 @@
 #   Step 6: Unified comparison table (CAST, MLP_ATE, MLP, RF, Maxent, BRT)
 #
 # Input: E:/CausalSDMs/outputs/Plant/CAST_ready/species_data_screened/CAST_*_screened.csv
-# Output: E:/CausalSDMs/output/case4_plant/ (all_results_plant_v3.csv, etc.)
+# Output: E:/CausalSDMs/output/case4_plant/ (all_results_plant.csv, etc.)
 # ==============================================================================
 
 rm(list = ls())
@@ -201,6 +201,8 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
     best_state <- NULL
     no_imp <- 0
     nan_count <- 0
+    # 记录每个 epoch 的训练历史
+    history <- data.frame(epoch = integer(), val_auc = numeric(), stringsAsFactors = FALSE)
     for (epoch in seq_len(epochs)) {
         current_lr <- if (epoch <= warmup_epochs) lr * epoch / warmup_epochs else 1e-5 + 0.5 * (lr - 1e-5) * (1 + cos(pi * (epoch - warmup_epochs) / (epochs - warmup_epochs)))
         for (pg in optimizer$param_groups) pg$lr <- current_lr
@@ -226,6 +228,7 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
             next
         }
         va <- tryCatch(as.numeric(pROC::auc(pROC::roc(y_val_vec, vp, quiet = TRUE))), error = function(e) 0)
+        history <- rbind(history, data.frame(epoch = epoch, val_auc = va, stringsAsFactors = FALSE))
         if (va > best_auc + 1e-4) {
             best_auc <- va
             best_state <- lapply(model$state_dict(), function(p) p$clone())
@@ -236,7 +239,7 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
         if (no_imp >= patience) break
     }
     if (!is.null(best_state)) model$load_state_dict(best_state)
-    list(model = model, best_val_auc = best_auc)
+    list(model = model, best_val_auc = best_auc, history = history)
 }
 
 flat_dataset <- dataset("FlatDS",
@@ -286,36 +289,65 @@ all_spatial_cate <- data.frame()
 done_pairs <- character(0)
 
 checkpoint_paths <- list(
-    res = file.path(out_dir, "all_results_plant_v3.csv"),
-    ate = file.path(out_dir, "all_ate_results_plant_v3.csv"),
-    dag = file.path(out_dir, "all_dag_info_plant_v3.csv"),
-    edg = file.path(out_dir, "all_dag_edges_plant_v3.csv"),
-    scr = file.path(out_dir, "all_screening_plant_v3.csv"),
-    rol = file.path(out_dir, "all_role_info_plant_v3.csv"),
-    lcv = file.path(out_dir, "all_learning_curves_plant_v3.csv"),
-    spt = file.path(out_dir, "all_spatial_cate_plant_v3.csv")
+    res = file.path(out_dir, "all_results_plant.csv"),
+    ate = file.path(out_dir, "all_ate_results_plant.csv"),
+    dag = file.path(out_dir, "all_dag_info_plant.csv"),
+    edg = file.path(out_dir, "all_dag_edges_plant.csv"),
+    scr = file.path(out_dir, "all_screening_plant.csv"),
+    rol = file.path(out_dir, "all_role_info_plant.csv"),
+    lcv = file.path(out_dir, "all_learning_curves_plant.csv"),
+    spt = file.path(out_dir, "all_spatial_cate_plant.csv")
 )
 
-if (file.exists(checkpoint_paths$res)) {
-    all_results <- read.csv(checkpoint_paths$res, stringsAsFactors = FALSE) %>% distinct(region, species, model, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$ate)) all_ate_results <- read.csv(checkpoint_paths$ate, stringsAsFactors = FALSE) %>% distinct(region, species, variable, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$dag)) all_dag_info <- read.csv(checkpoint_paths$dag, stringsAsFactors = FALSE) %>% distinct(region, species, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$edg)) all_dag_edges <- read.csv(checkpoint_paths$edg, stringsAsFactors = FALSE) %>% distinct(region, species, from, to, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$scr)) all_screening <- read.csv(checkpoint_paths$scr, stringsAsFactors = FALSE) %>% distinct(region, species, variable, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$rol)) all_role_info <- read.csv(checkpoint_paths$rol, stringsAsFactors = FALSE) %>% distinct(region, species, variable, .keep_all = TRUE)
-    if (file.exists(checkpoint_paths$lcv)) all_learning_curves <- read.csv(checkpoint_paths$lcv, stringsAsFactors = FALSE)
-    if (file.exists(checkpoint_paths$spt)) all_spatial_cate <- read.csv(checkpoint_paths$spt, stringsAsFactors = FALSE)
+# 安全读取 CSV：文件不存在、为空、或格式异常时返回空 data.frame
+safe_read_csv <- function(path) {
+    if (!file.exists(path)) return(data.frame())
+    tryCatch({
+        df <- read.csv(path, stringsAsFactors = FALSE)
+        if (nrow(df) == 0 || ncol(df) == 0) return(data.frame())
+        df
+    }, error = function(e) data.frame())
+}
 
+if (file.exists(checkpoint_paths$res)) {
+    all_results <- safe_read_csv(checkpoint_paths$res)
+    if (nrow(all_results) > 0) {
+        all_results <- all_results %>% distinct(region, species, model, .keep_all = TRUE)
+    }
+    tmp <- safe_read_csv(checkpoint_paths$ate)
+    if (nrow(tmp) > 0) all_ate_results <- tmp %>% distinct(region, species, variable, .keep_all = TRUE)
+    tmp <- safe_read_csv(checkpoint_paths$dag)
+    if (nrow(tmp) > 0) all_dag_info <- tmp %>% distinct(region, species, .keep_all = TRUE)
+    tmp <- safe_read_csv(checkpoint_paths$edg)
+    if (nrow(tmp) > 0) all_dag_edges <- tmp %>% distinct(region, species, from, to, .keep_all = TRUE)
+    tmp <- safe_read_csv(checkpoint_paths$scr)
+    if (nrow(tmp) > 0) all_screening <- tmp %>% distinct(region, species, variable, .keep_all = TRUE)
+    tmp <- safe_read_csv(checkpoint_paths$rol)
+    if (nrow(tmp) > 0) all_role_info <- tmp %>% distinct(region, species, variable, .keep_all = TRUE)
+    tmp <- safe_read_csv(checkpoint_paths$lcv)
+    if (nrow(tmp) > 0) all_learning_curves <- tmp
+    tmp <- safe_read_csv(checkpoint_paths$spt)
+    if (nrow(tmp) > 0) all_spatial_cate <- tmp
+
+    # 物种完成判定：6个模型都有记录，且神经网络模型的 AUC 不全为 NA
     done_count <- all_results %>%
         group_by(region, species) %>%
-        summarise(n = n(), .groups = "drop") %>%
-        filter(n >= 6)
+        summarise(
+            n = n(),
+            nn_na = sum(is.na(auc_mean) & model %in% c("CAST", "MLP_ATE", "MLP")),
+            .groups = "drop"
+        ) %>%
+        filter(n >= 6, nn_na == 0)
     if (nrow(done_count) > 0) done_pairs <- paste(done_count$region, done_count$species, sep = "___")
 
     incomplete <- all_results %>%
         group_by(region, species) %>%
-        summarise(n = n(), .groups = "drop") %>%
-        filter(n < 6)
+        summarise(
+            n = n(),
+            nn_na = sum(is.na(auc_mean) & model %in% c("CAST", "MLP_ATE", "MLP")),
+            .groups = "drop"
+        ) %>%
+        filter(n < 6 | nn_na > 0)
     if (nrow(incomplete) > 0) {
         inc_pairs <- paste(incomplete$region, incomplete$species, sep = "___")
         filter_inc <- function(df) if (nrow(df) > 0) filter(df, !paste(region, species, sep = "___") %in% inc_pairs) else df
@@ -509,7 +541,7 @@ for (sp_idx in seq_along(sp_files)) {
                     m <- CI_MLP(ncol(X_tr), hidden_sz, 0.2)
                     res <- train_nn(m, dl, function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()), y_val, epochs = 200, patience = 20, focal_alpha = focal_alpha)
 
-                    if (nrow(res$history) > 0) {
+                    if (!is.null(res$history) && nrow(res$history) > 0) {
                         res$history$run <- ri
                         res$history$model <- name
                         model_curves <- rbind(model_curves, res$history)
