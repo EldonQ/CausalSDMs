@@ -108,3 +108,5 @@ logs/
 *.aux
 *.out
 *.synctex.gz
+
+plot-function-main/
