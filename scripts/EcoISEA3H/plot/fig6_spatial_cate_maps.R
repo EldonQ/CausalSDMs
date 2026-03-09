@@ -1,343 +1,298 @@
 ################################################################################
-# Fig 6: Spatial CATE Maps — Real Causal Forest Heterogeneous Effects
+# Fig 6: 空间 CATE 热力图 — 批量生成，单图单文件
 #
-# Scientific Question Q4:
-#   Can CAST provide ecological interpretability that traditional SDMs cannot?
-#   Specifically, can it reveal WHERE each environmental driver exerts its
-#   strongest causal influence?
+# 核心叙事: CAST 通过因果森林 (grf) 揭示每个环境变量对物种分布的
+#           空间异质性因果效应 — 同一变量在不同地区影响方向和强度不同
 #
-# CRITICAL UPDATE: Now uses REAL grf::causal_forest CATE predictions saved
-#   in all_spatial_cate_v3.csv, NOT the linear proxy (scale(var) * ATE).
+# 渲染方式:
+#   IDW 空间插值 → 栅格化 → 中国边界裁剪 → geom_tile + geom_sf
+#   参考 scripts/CASTplot/fig5_spatial_cate_map.R 的渲染风格
 #
-# Panel (a)(b): Spatial CATE heatmaps for top-2 significant causal drivers
-# Panel (c):    ATE forest plot — global causal effects with 95% CI
-# Panel (d):    Causal role bar chart — DAG out-degree
+# 输出: 每张 CATE 图独立保存为 fig6_cate_{species}_{variable}.png/svg
+#       保存至 figures/case2_eco/plot/cate_maps/
 #
-# Species selection: Automatically selects the species with the most
-#   significant ATE variables from the EcoISEA3H dataset
+# ═══ 可配置参数（脚本头部修改）═══
+#   TARGET_SPECIES : 指定物种 (NULL = 全部)
+#   TARGET_VARS    : 指定变量 (NULL = 自动选取每物种所有已计算 CATE 变量)
+#   IDW_RES        : IDW 插值网格分辨率 (度)
 #
-# Data required:
-#   output/case2_eco/all_spatial_cate_v3.csv  (real Causal Forest CATE!)
+# 数据来源:
+#   output/case2_eco/all_spatial_cate_v3.csv  (真实因果森林 CATE 预测)
 #   output/case2_eco/all_ate_results_v3.csv
-#   output/case2_eco/all_results_v3.csv
-#   output/case2_eco/all_screening_v3.csv
-#   outputs/EcoISEA3H/Res9/CAST_ready/CAST_Species_Summary.csv
+#   chinashp/china.shp
 #
-# Run: setwd("E:/CausalSDMs")
-#      source("scripts/EcoISEA3H/plot/fig6_spatial_cate_maps.R")
+# 运行: setwd("E:/CausalSDMs")
+#       source("scripts/EcoISEA3H/plot/fig6_spatial_cate_maps.R")
 ################################################################################
 
 rm(list = ls())
 setwd("E:/CausalSDMs")
 
-fig_dir <- "figures/case2_eco/plot"
+# ══════════════════════════════════════════════════════════════════════════════
+# ★ 可配置参数 — 按需修改
+# ══════════════════════════════════════════════════════════════════════════════
+TARGET_SPECIES <- NULL        # NULL = 全部; 或 c("Alces_alces", "Ovis_ammon")
+TARGET_VARS    <- NULL        # NULL = 每物种所有已有 CATE 变量; 或 c("elevation", "bio19")
+IDW_RES        <- 0.15        # IDW 插值网格分辨率 (度, 越小越精细但越慢)
+IDW_NMAX       <- 15          # IDW 最大邻域点数
+IDW_IDP        <- 2.0         # IDW 反距离幂次
+BUFFER_DEG     <- 0.5         # 插值范围超出数据边界的缓冲 (度)
+
+fig_dir <- "figures/case2_eco/plot/cate_maps"
+tbl_dir <- "figures/case2_eco/tables"
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(tbl_dir, recursive = TRUE, showWarnings = FALSE)
 
-library(tidyverse)
-library(patchwork)
+# ══════════════════════════════════════════════════════════════════════════════
+# 加载依赖
+# ══════════════════════════════════════════════════════════════════════════════
+suppressPackageStartupMessages({
+    library(tidyverse)
+    library(sf)
+    library(terra)
+    library(gstat)
+})
 
-# ── Themes ───────────────────────────────────────────────────────────────────
-theme_map <- function(base_size = 11) {
-    theme_minimal(base_size = base_size, base_family = "sans") +
+# ══════════════════════════════════════════════════════════════════════════════
+# 地图主题 — 参考 CASTplot/fig5 的浮空渲染风格
+# ══════════════════════════════════════════════════════════════════════════════
+theme_cate <- function() {
+    theme_void(base_family = "sans") +
         theme(
-            panel.grid        = element_blank(),
-            axis.text         = element_text(size = 8, color = "grey50"),
-            axis.title        = element_text(face = "bold", size = 9),
-            plot.title        = element_text(face = "bold", hjust = 0, size = 11),
-            plot.subtitle     = element_text(hjust = 0, color = "grey40", size = 8.5),
-            legend.background = element_rect(fill = alpha("white", 0.8), color = NA),
-            legend.title      = element_text(size = 8, face = "bold"),
-            legend.text       = element_text(size = 7),
-            legend.key.height = unit(0.8, "cm")
+            plot.title        = element_text(face = "bold", hjust = 0.5, size = 14,
+                                             margin = margin(b = 6)),
+            plot.subtitle     = element_text(hjust = 0.5, color = "grey40", size = 10,
+                                             margin = margin(b = 12)),
+            legend.position   = "right",
+            legend.title      = element_text(face = "bold", size = 10),
+            legend.text       = element_text(size = 8),
+            legend.key.height = unit(1.8, "cm"),
+            legend.key.width  = unit(0.4, "cm"),
+            plot.background   = element_rect(fill = "white", color = NA),
+            panel.background  = element_rect(fill = "white", color = NA),
+            plot.margin       = margin(10, 10, 10, 10)
         )
 }
 
-theme_pub <- function(base_size = 11) {
-    theme_minimal(base_size = base_size, base_family = "sans") +
-        theme(
-            panel.grid.minor  = element_blank(),
-            axis.title        = element_text(face = "bold"),
-            plot.title        = element_text(face = "bold", hjust = 0, size = 11),
-            plot.subtitle     = element_text(hjust = 0, color = "grey40", size = 8.5),
-            legend.background = element_rect(fill = "white", color = NA)
-        )
+# ══════════════════════════════════════════════════════════════════════════════
+# 变量英文显示名称
+# ══════════════════════════════════════════════════════════════════════════════
+var_labels <- c(
+    "aridityindexthornthwaite" = "Aridity Index",
+    "bio02"                    = "Diurnal Range (Bio02)",
+    "bio15"                    = "Precip. Seasonality (Bio15)",
+    "bio19"                    = "Precip. Coldest Qtr (Bio19)",
+    "elevation"                = "Elevation",
+    "etccdi_cwd"               = "Consecutive Wet Days",
+    "landcover_igbp"           = "Land Cover (IGBP)",
+    "maxtempcoldest"           = "Tmax Coldest Month",
+    "nontree"                  = "Non-tree Vegetation",
+    "topowet"                  = "Topographic Wetness",
+    "tri"                      = "Terrain Ruggedness"
+)
+
+get_var_label <- function(x) {
+    out <- var_labels[x]
+    out[is.na(out)] <- x[is.na(out)]
+    unname(out)
 }
 
-# ── Load data ────────────────────────────────────────────────────────────────
+fmt_sp_display <- function(x) gsub("_", " ", x)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 读取数据
+# ══════════════════════════════════════════════════════════════════════════════
+cat("读取 CATE 数据...\n")
 cate_all <- read.csv("output/case2_eco/all_spatial_cate_v3.csv",
-    stringsAsFactors = FALSE
-)
+                     stringsAsFactors = FALSE)
 
-ate <- read.csv("output/case2_eco/all_ate_results_v3.csv",
-    stringsAsFactors = FALSE
-) %>%
-    mutate(
-        coef        = as.numeric(coef),
-        se          = as.numeric(se),
-        significant = as.logical(significant),
-        ci_lower    = coef - 1.96 * se,
-        ci_upper    = coef + 1.96 * se
-    )
+ate_all <- read.csv("output/case2_eco/all_ate_results_v3.csv",
+                    stringsAsFactors = FALSE) %>%
+    mutate(coef = as.numeric(coef),
+           significant = as.logical(significant))
 
-results <- read.csv("output/case2_eco/all_results_v3.csv",
-    stringsAsFactors = FALSE
-)
+cat("读取中国边界...\n")
+china_sf <- st_read("chinashp/china.shp", quiet = TRUE)
 
-screen <- read.csv("output/case2_eco/all_screening_v3.csv",
-    stringsAsFactors = FALSE
-)
-
-sp_meta <- read.csv(
-    "outputs/EcoISEA3H/Res9/CAST_ready/CAST_Species_Summary.csv",
-    stringsAsFactors = FALSE
-) %>%
-    mutate(species = gsub(" ", "_", species))
-
-# ── AUTO-SELECT best species for CATE showcase ──────────────────────────────
-# Choose the species with the most CATE variables computed (visual richness)
-# AND the most significant ATE variables
-cate_species_vars <- cate_all %>%
-    group_by(species) %>%
-    summarise(
-        n_cate_vars = n_distinct(variable),
-        n_points = n(),
-        .groups = "drop"
-    )
-
-species_sig_count <- ate %>%
-    filter(significant == TRUE) %>%
-    group_by(species) %>%
-    summarise(n_sig = n(), .groups = "drop")
-
-best_sp <- cate_species_vars %>%
-    left_join(species_sig_count, by = "species") %>%
-    mutate(n_sig = replace_na(n_sig, 0)) %>%
-    arrange(desc(n_sig), desc(n_cate_vars)) %>%
-    slice_head(n = 1) %>%
-    pull(species)
-
-target_sp <- best_sp
-target_region <- "China_Res9"
-
-sp_display <- gsub("_", " ", target_sp)
-sp_family <- sp_meta %>%
-    filter(species == target_sp) %>%
-    pull(family) %>%
-    first()
-if (is.null(sp_family) || is.na(sp_family)) sp_family <- ""
-
-n_sig_ate <- species_sig_count %>%
-    filter(species == target_sp) %>%
-    pull(n_sig)
-if (length(n_sig_ate) == 0) n_sig_ate <- 0
-
-cat(sprintf(
-    "[Fig 6] Auto-selected species: %s (%s) with %d significant ATE variables\n",
-    sp_display, sp_family, n_sig_ate
-))
-
-# ── Species CATE data (real Causal Forest predictions!) ─────────────────────
-sp_cate <- cate_all %>% filter(species == target_sp)
-sp_cate_vars <- unique(sp_cate$variable)
-
-cat(sprintf(
-    "[Fig 6] Real CATE data: %d grid points × %d variables (%s)\n",
-    nrow(sp_cate) / length(sp_cate_vars),
-    length(sp_cate_vars),
-    paste(sp_cate_vars, collapse = ", ")
-))
-
-# ── Species ATE data ─────────────────────────────────────────────────────────
-sp_ate <- ate %>%
-    filter(species == target_sp) %>%
-    arrange(desc(abs(coef)))
-
-sp_ate_sig <- sp_ate %>% filter(significant == TRUE)
+cat(sprintf("CATE 数据: %s 条, %d 物种, %d 变量\n",
+            format(nrow(cate_all), big.mark = ","),
+            n_distinct(cate_all$species),
+            n_distinct(cate_all$variable)))
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Panel (c): ATE forest plot — global causal effect context
+# 确定待绘制的 (物种, 变量) 组合
 # ══════════════════════════════════════════════════════════════════════════════
-ate_plot <- sp_ate %>%
-    mutate(
-        sig_marker = ifelse(significant,
-            "Significant (p < 0.05)",
-            "Not significant"
-        ),
-        variable = factor(variable, levels = rev(variable)) # keep sorted by |coef|
-    )
+available_combos <- cate_all %>%
+    distinct(species, variable)
 
-pc <- ggplot(
-    ate_plot,
-    aes(
-        x = coef,
-        y = variable,
-        color = sig_marker
-    )
-) +
-    geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
-    geom_point(size = 2.5) +
-    geom_errorbar(aes(xmin = ci_lower, xmax = ci_upper),
-        width = 0.25, linewidth = 0.5
-    ) +
-    scale_color_manual(
-        values = c(
-            "Significant (p < 0.05)" = "#C0392B",
-            "Not significant" = "grey55"
-        ),
-        name = ""
-    ) +
-    labs(
-        title = sprintf("(c) ATE forest plot"),
-        subtitle = "DML cross-fitting | 95% CI | Red = significant causal driver",
-        x = "Average Treatment Effect (ATE)", y = ""
-    ) +
-    theme_pub() +
-    theme(
-        legend.position = "bottom",
-        panel.grid.major.y = element_line(color = "grey93")
-    )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Panel (d): Causal roles bar chart
-# ══════════════════════════════════════════════════════════════════════════════
-sp_screen <- screen %>%
-    filter(species == target_sp)
-
-cast_res <- results %>%
-    filter(species == target_sp, model == "CAST")
-cast_vars <- sp_screen %>%
-    arrange(desc(score_total)) %>%
-    slice_head(n = ifelse(nrow(cast_res) > 0, cast_res$n_vars[1], 6)) %>%
-    pull(variable)
-
-role_data <- sp_screen %>%
-    filter(variable %in% cast_vars) %>%
-    mutate(
-        role = case_when(
-            out_degree >= 2 ~ "Root",
-            out_degree == 1 ~ "Mediator",
-            TRUE ~ "Terminal"
-        )
-    ) %>%
-    select(variable, out_degree, role, score_total)
-
-role_colors <- c("Root" = "#2C3E50", "Mediator" = "#E67E22", "Terminal" = "#27AE60")
-
-pd <- ggplot(role_data, aes(
-    x = reorder(variable, -out_degree), y = out_degree,
-    fill = role
-)) +
-    geom_col(alpha = 0.85, width = 0.65) +
-    scale_fill_manual(values = role_colors, name = "Causal Role") +
-    labs(
-        title = "(d) Causal roles",
-        subtitle = "Out-degree = number of downstream variables influenced",
-        x = "", y = "DAG out-degree"
-    ) +
-    theme_pub() +
-    theme(
-        axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
-        legend.position = "bottom"
-    )
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Panels (a)(b): Spatial CATE heatmaps — REAL Causal Forest predictions
-# ══════════════════════════════════════════════════════════════════════════════
-# Select top-2 variables for CATE maps (prioritize significant ATEs that
-# also have CATE data)
-cate_candidates <- sp_ate %>%
-    filter(variable %in% sp_cate_vars) %>%
-    arrange(desc(significant), desc(abs(coef)))
-
-if (nrow(cate_candidates) >= 2) {
-    cate_top2 <- cate_candidates %>% slice_head(n = 2)
-} else {
-    cate_top2 <- sp_ate %>%
-        filter(variable %in% sp_cate_vars) %>%
-        slice_head(n = min(2, n()))
+if (!is.null(TARGET_SPECIES)) {
+    available_combos <- available_combos %>%
+        filter(species %in% TARGET_SPECIES)
+}
+if (!is.null(TARGET_VARS)) {
+    available_combos <- available_combos %>%
+        filter(variable %in% TARGET_VARS)
 }
 
-make_real_cate_panel <- function(sp_cate_df, var_name, ate_coef, panel_label) {
-    plot_df <- sp_cate_df %>%
-        filter(variable == var_name) %>%
+plot_tasks <- available_combos %>%
+    left_join(
+        ate_all %>% select(species, variable, coef, significant),
+        by = c("species", "variable")
+    ) %>%
+    replace_na(list(coef = 0, significant = FALSE)) %>%
+    arrange(species, desc(significant), desc(abs(coef)))
+
+cat(sprintf("待绘制: %d 张 CATE 热力图 (%d 物种)\n",
+            nrow(plot_tasks), n_distinct(plot_tasks$species)))
+
+# 保存任务清单
+write.csv(plot_tasks, file.path(tbl_dir, "fig6_cate_plot_tasks.csv"),
+          row.names = FALSE)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 核心渲染函数: 单张 CATE 热力图
+#   1. 提取 CATE 网格点
+#   2. IDW 空间插值 → 平滑热力场
+#   3. 栅格化 → 中国边界裁剪
+#   4. geom_tile 渲染 + geom_sf 叠加边界
+# ══════════════════════════════════════════════════════════════════════════════
+render_cate_map <- function(cate_df, sp_name, var_name, ate_coef, china_boundary) {
+
+    # ── 提取该物种×变量的 CATE 网格点 ────────────────────────────────────────
+    pts <- cate_df %>%
+        filter(species == sp_name, variable == var_name) %>%
+        select(lon, lat, cate) %>%
         drop_na()
 
-    if (nrow(plot_df) < 10) {
-        return(ggplot() +
-            theme_void() +
-            labs(title = paste(panel_label, "— Insufficient CATE data")))
+    if (nrow(pts) < 30) {
+        cat(sprintf("  ⚠ 数据不足 (%d 点), 跳过\n", nrow(pts)))
+        return(NULL)
     }
 
-    # Symmetric color scale for diverging palette
-    cate_abs_max <- quantile(abs(plot_df$cate), 0.98, na.rm = TRUE)
+    # ── IDW 空间插值 ─────────────────────────────────────────────────────────
+    pts_sf <- st_as_sf(pts, coords = c("lon", "lat"), crs = 4326)
 
-    p <- ggplot(plot_df, aes(x = lon, y = lat, color = cate)) +
-        geom_point(size = 0.5, alpha = 0.80, shape = 15) +
-        coord_fixed() +
-        scale_color_gradient2(
-            low = "#2166AC", mid = "#F7F7F7", high = "#B2182B",
-            midpoint = 0,
-            limits = c(-cate_abs_max, cate_abs_max),
-            oob = scales::squish,
-            name = "CATE"
-        ) +
-        labs(
-            title = sprintf("%s  Causal effect — %s", panel_label, var_name),
-            subtitle = sprintf(
-                "grf::causal_forest  |  ATE = %.4f  |  n = %s grid cells",
-                ate_coef, format(nrow(plot_df), big.mark = ",")
-            ),
-            x = "Longitude", y = "Latitude"
-        ) +
-        theme_map()
-    p
-}
+    # 构建插值目标网格 (覆盖数据范围 + 缓冲)
+    lon_rng <- range(pts$lon) + c(-BUFFER_DEG, BUFFER_DEG)
+    lat_rng <- range(pts$lat) + c(-BUFFER_DEG, BUFFER_DEG)
+    grid_lons <- seq(lon_rng[1], lon_rng[2], by = IDW_RES)
+    grid_lats <- seq(lat_rng[1], lat_rng[2], by = IDW_RES)
+    grid_df   <- expand.grid(lon = grid_lons, lat = grid_lats)
+    grid_sf   <- st_as_sf(grid_df, coords = c("lon", "lat"), crs = 4326)
 
-if (nrow(cate_top2) >= 2) {
-    pa <- make_real_cate_panel(sp_cate, cate_top2$variable[1], cate_top2$coef[1], "(a)")
-    pb <- make_real_cate_panel(sp_cate, cate_top2$variable[2], cate_top2$coef[2], "(b)")
-} else if (nrow(cate_top2) == 1) {
-    pa <- make_real_cate_panel(sp_cate, cate_top2$variable[1], cate_top2$coef[1], "(a)")
-    pb <- ggplot() +
-        theme_void() +
-        labs(title = "(b) Only one CATE variable available")
-} else {
-    pa <- ggplot() +
-        theme_void() +
-        labs(title = "(a) No CATE data")
-    pb <- ggplot() +
-        theme_void() +
-        labs(title = "(b) No CATE data")
-}
+    # IDW 插值
+    idw_out <- gstat::idw(
+        cate ~ 1,
+        locations  = pts_sf,
+        newdata    = grid_sf,
+        idp        = IDW_IDP,
+        nmax       = IDW_NMAX,
+        debug.level = 0
+    )
+    grid_df$CATE <- idw_out$var1.pred
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Combine  2×2 layout
-#   (a) CATE var1   |  (b) CATE var2
-#   (c) ATE forest  |  (d) Causal roles
-# ══════════════════════════════════════════════════════════════════════════════
-fig6 <- (pa | pb) / (pc | pd) +
-    plot_layout(heights = c(1.1, 1)) +
-    plot_annotation(
-        title = sprintf(
-            "Fig 6  Spatially explicit causal effects: %s (%s)",
-            sp_display, sp_family
-        ),
-        subtitle = paste0(
-            "Real Causal Forest (grf) CATE predictions — heterogeneous ",
-            "causal effects estimated at each grid cell. ",
-            "Warm = strong positive effect; cool = negative/weak."
-        ),
-        theme = theme(
-            plot.title = element_text(face = "bold", size = 13, hjust = 0.5),
-            plot.subtitle = element_text(
-                face = "italic", size = 9.5, hjust = 0.5,
-                color = "grey40"
-            )
-        )
+    # ── 栅格化 + 中国边界裁剪 ────────────────────────────────────────────────
+    r_interp <- rast(grid_df, type = "xyz", crs = "EPSG:4326")
+    r_masked <- tryCatch(
+        mask(r_interp, vect(china_boundary)),
+        error = function(e) {
+            cat(sprintf("  ⚠ mask 失败 (%s), 使用未裁剪数据\n", e$message))
+            r_interp
+        }
     )
 
-ggsave(file.path(fig_dir, "fig6_spatial_cate_maps.png"),
-    fig6,
-    width = 14, height = 11, dpi = 300, bg = "white"
-)
-cat(sprintf("✓ Saved fig6_spatial_cate_maps.png (species: %s)\n", sp_display))
+    masked_df <- as.data.frame(r_masked, xy = TRUE, na.rm = TRUE)
+    if (ncol(masked_df) >= 3) {
+        names(masked_df)[3] <- "CATE"
+    } else {
+        cat("  ⚠ 裁剪后无数据, 跳过\n")
+        return(NULL)
+    }
+
+    if (nrow(masked_df) < 10) {
+        cat("  ⚠ 裁剪后数据不足, 跳过\n")
+        return(NULL)
+    }
+
+    # ── 对称发散色标 (以 0 为中心) ───────────────────────────────────────────
+    cate_abs_lim <- quantile(abs(masked_df$CATE), 0.98, na.rm = TRUE)
+    if (cate_abs_lim < 1e-8) cate_abs_lim <- max(abs(masked_df$CATE)) + 1e-6
+
+    # ── 渲染: geom_tile + geom_sf (参考 CASTplot/fig5 风格) ──────────────────
+    p <- ggplot() +
+        geom_tile(data = masked_df, aes(x = x, y = y, fill = CATE)) +
+        geom_sf(data = china_boundary, fill = NA, color = "grey30",
+                linewidth = 0.3) +
+        scale_fill_gradient2(
+            low      = "#2166AC",
+            mid      = "#F7F7F7",
+            high     = "#B2182B",
+            midpoint = 0,
+            limits   = c(-cate_abs_lim, cate_abs_lim),
+            oob      = scales::squish,
+            name     = "CATE"
+        ) +
+        coord_sf(expand = FALSE) +
+        labs(
+            title    = sprintf("Spatial CATE: %s", get_var_label(var_name)),
+            subtitle = sprintf(
+                "%s  |  ATE = %.4f  |  n = %s grid cells",
+                fmt_sp_display(sp_name), ate_coef,
+                format(nrow(pts), big.mark = ",")
+            )
+        ) +
+        theme_cate()
+
+    return(p)
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 批量绘制
+# ══════════════════════════════════════════════════════════════════════════════
+cat(sprintf("\n%s\n", paste0(rep("=", 60), collapse = "")))
+cat("开始批量绘制 CATE 热力图\n")
+cat(sprintf("%s\n\n", paste0(rep("=", 60), collapse = "")))
+
+success_count <- 0
+t_start <- Sys.time()
+
+for (i in seq_len(nrow(plot_tasks))) {
+    sp  <- plot_tasks$species[i]
+    var <- plot_tasks$variable[i]
+    ate_val <- plot_tasks$coef[i]
+
+    cat(sprintf("[%d/%d] %s x %s (ATE = %.4f)\n",
+                i, nrow(plot_tasks), sp, var, ate_val))
+
+    p <- tryCatch(
+        render_cate_map(cate_all, sp, var, ate_val, china_sf),
+        error = function(e) {
+            cat(sprintf("  ✗ 错误: %s\n", e$message))
+            return(NULL)
+        }
+    )
+
+    if (!is.null(p)) {
+        fname <- sprintf("fig6_cate_%s_%s", sp, var)
+
+        ggsave(file.path(fig_dir, paste0(fname, ".png")),
+               p, width = 10, height = 8, dpi = 1200, bg = "white")
+        tryCatch(
+            ggsave(file.path(fig_dir, paste0(fname, ".svg")),
+                   p, width = 10, height = 8, bg = "white"),
+            error = function(e) NULL
+        )
+
+        success_count <- success_count + 1
+        cat(sprintf("  ✓ 已保存\n"))
+    }
+}
+
+elapsed <- as.numeric(difftime(Sys.time(), t_start, units = "mins"))
+
+cat(sprintf("\n%s\n", paste0(rep("=", 60), collapse = "")))
+cat(sprintf("  Fig 6 完成: %d / %d 张 CATE 热力图已保存\n",
+            success_count, nrow(plot_tasks)))
+cat(sprintf("  输出目录: %s\n", fig_dir))
+cat(sprintf("  耗时: %.1f 分钟\n", elapsed))
+cat(sprintf("%s\n", paste0(rep("=", 60), collapse = "")))

@@ -447,6 +447,6 @@ fig2 <- (pa | pb) / (pc | pd) +
 
 ggsave(file.path(fig_dir, "fig2_single_species_showcase.png"),
     fig2,
-    width = 16, height = 12, dpi = 300, bg = "white"
+    width = 16, height = 12, dpi = 1200, bg = "white"
 )
 cat(sprintf("✓ Saved fig2_single_species_showcase.png (species: %s)\n", sp_display))
