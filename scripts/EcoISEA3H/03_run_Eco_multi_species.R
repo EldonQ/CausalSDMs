@@ -1,6 +1,6 @@
 # 03_run_EcoISEA3H_multi_species.R
 # ==============================================================================
-# CAST v3 — Eco-ISEA3H Multi-Species Experiment (China Region)
+# CAST v3 — Eco-ISEA3H Multi-Species Experiment (Global Region)
 #
 # Pipeline per species:
 #   Step 1: Variables already VIF-screened (13 vars)
@@ -28,13 +28,18 @@ for (pkg in pkgs) {
 }
 if (!torch_is_installed()) torch::install_torch()
 
+# --- CUDA configuration ---
+device <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+cat(sprintf("  PyTorch computing device: %s\n", as.character(device)))
+
+
 # ---- Configuration ----
-REGION <- "China_Res9"
+REGION <- "Global_Res9"
 n_runs <- 3
 seeds <- c(42, 71, 103)
 
-data_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready/species_data_screened"
-out_dir <- "E:/CausalSDMs/output/case2_eco"
+data_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Global_Res9/CAST_ready/species_data_screened"
+out_dir <- "E:/CausalSDMs/output/case2_eco_global"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ==============================================================================
@@ -247,8 +252,8 @@ train_nn <- function(model, train_dl, val_pred_fn, y_val_vec,
 
 flat_dataset <- dataset("FlatDS",
     initialize = function(X, y) {
-        self$x <- torch_tensor(as.matrix(X), dtype = torch_float())
-        self$y <- torch_tensor(y, dtype = torch_float())$unsqueeze(2)
+        self$x <- torch_tensor(as.matrix(X), dtype = torch_float(), device = device)
+        self$y <- torch_tensor(y, dtype = torch_float(), device = device)$unsqueeze(2)
     },
     .getitem = function(i) list(x = self$x[i, ], y = self$y[i, ]),
     .length = function() self$y$size(1)
@@ -258,7 +263,7 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw) {
     switch(sdm_name,
         "RF" = {
             set.seed(42)
-            predict(ranger::ranger(presence ~ ., data = cbind(presence = as.factor(y_tr_raw), X_tr_raw), num.trees = 1000, probability = TRUE, seed = 42), data = X_te_raw)$predictions[, "1"]
+            predict(ranger::ranger(presence ~ ., data = cbind(presence = as.factor(y_tr_raw), X_tr_raw), num.trees = 300, num.threads = 8, probability = TRUE, seed = 42), data = X_te_raw)$predictions[, "1"]
         },
         "Maxent" = {
             mx <- maxnet::maxnet(p = y_tr_raw, data = X_tr_raw, maxnet.formula(p = y_tr_raw, data = X_tr_raw))
@@ -266,7 +271,7 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw) {
         },
         "BRT" = {
             set.seed(42)
-            brt <- gbm::gbm(presence ~ ., data = cbind(presence = y_tr_raw, X_tr_raw), distribution = "bernoulli", n.trees = 2000, interaction.depth = 5, shrinkage = 0.01, cv.folds = 5, verbose = FALSE)
+            brt <- gbm::gbm(presence ~ ., data = cbind(presence = y_tr_raw, X_tr_raw), distribution = "bernoulli", n.trees = 500, interaction.depth = 5, shrinkage = 0.01, cv.folds = 5, n.cores = 8, verbose = FALSE)
             bt <- gbm::gbm.perf(brt, method = "cv", plot.it = FALSE)
             predict(brt, X_te_raw, n.trees = bt, type = "response")
         }
@@ -377,6 +382,13 @@ for (sp_idx in seq_along(sp_files)) {
         env_for_dag_df[[col]] <- as.numeric(env_for_dag_df[[col]])
     }
 
+    # [FIX] Remove incomplete rows to prevent bnlearn hc() from crashing on NA (Option A)
+    env_for_dag_df <- na.omit(env_for_dag_df)
+    if (nrow(env_for_dag_df) < 10) {
+        cat(sprintf("    Skip: Not enough complete cases for DAG learning (< 10).\n"))
+        next
+    }
+
     if (nrow(env_for_dag_df) > 8000) env_for_dag_df <- env_for_dag_df[sample(nrow(env_for_dag_df), 8000), ]
     set.seed(42)
     boot_str <- bnlearn::boot.strength(env_for_dag_df, R = 100, algorithm = "hc", algorithm.args = list(score = "bic-g"))
@@ -410,7 +422,7 @@ for (sp_idx in seq_along(sp_files)) {
         tryCatch(
             {
                 set.seed(42)
-                res <- dml_ate(Y = Y_full, T_var = T_bin, W = W, K = 2, num_trees = 200) # num_trees=200 for speed
+                res <- dml_ate(Y = Y_full, T_var = T_bin, W = W, K = 2, num_trees = 200) # num_trees=50 for speed
                 ate_results <- rbind(ate_results, data.frame(variable = v, coef = res$ate, se = res$se, p_value = res$p_value, significant = res$significant, stringsAsFactors = FALSE))
             },
             error = function(e) {}
@@ -425,7 +437,7 @@ for (sp_idx in seq_along(sp_files)) {
 
     # --- Step 4: Adaptive CAST Screening v2 ---
     set.seed(42)
-    rf_imp <- ranger::ranger(presence ~ ., data = cbind(presence = as.factor(Y_full), X_full), num.trees = 500, importance = "permutation", verbose = FALSE)$variable.importance
+    rf_imp <- ranger::ranger(presence ~ ., data = cbind(presence = as.factor(Y_full), X_full), num.trees = 300, num.threads = 8, importance = "permutation", verbose = FALSE)$variable.importance
     dag_quality <- 1 - dag_density
     ate_sig_ratio <- if (nrow(ate_results) > 0) sum(ate_results$significant) / nrow(ate_results) else 0
     w_dag <- 0.15 + 0.15 * dag_quality
@@ -513,8 +525,9 @@ for (sp_idx in seq_along(sp_files)) {
                 {
                     ds <- flat_dataset(X_tr, y_tr)
                     dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE, drop_last = TRUE)
-                    vt <- torch_tensor(as.matrix(X_val), dtype = torch_float())
+                    vt <- torch_tensor(as.matrix(X_val), dtype = torch_float(), device = device)
                     m <- CI_MLP(ncol(X_tr), hidden_sz, 0.2)
+                    m$to(device = device)
                     res <- train_nn(m, dl, function(m) as.numeric(torch_sigmoid(m(vt))$squeeze()$cpu()), y_val, epochs = 200, patience = 20, focal_alpha = focal_alpha)
 
                     if (nrow(res$history) > 0) {
@@ -525,7 +538,7 @@ for (sp_idx in seq_along(sp_files)) {
 
                     res$model$eval()
                     with_no_grad({
-                        tt <- torch_tensor(as.matrix(X_te), dtype = torch_float())
+                        tt <- torch_tensor(as.matrix(X_te), dtype = torch_float(), device = device)
                         pred <- as.numeric(torch_sigmoid(res$model(tt))$squeeze()$cpu())
                     })
                     ev <- evaluate_model(pred, y_test_all)
@@ -594,7 +607,7 @@ for (sp_idx in seq_along(sp_files)) {
         W_covs <- X_full[, setdiff(selected_vars, cv), drop = FALSE]
         cf <- tryCatch(
             {
-                grf::causal_forest(X = as.matrix(W_covs), Y = Y_full, W = T_cont, num.trees = 500, seed = 42)
+                grf::causal_forest(X = as.matrix(W_covs), Y = Y_full, W = T_cont, num.trees = 1000, num.threads = 8, seed = 42)
             },
             error = function(e) NULL
         )

@@ -3,7 +3,7 @@
 # CAST v3 — Plant Multi-Species Experiment (China Region)
 #
 # Pipeline per species:
-#   Step 1: Variables already VIF-screened (13 vars)
+#   Step 1: Variables already VIF-screened
 #   Step 2: DAG learning (HC bootstrap R=100, strength≥0.7, direction≥0.6)
 #   Step 3: ATE estimation (DML 2-fold cross-fitting)
 #   Step 4: Adaptive CAST Screening v2
@@ -271,7 +271,7 @@ train_sdm <- function(sdm_name, X_tr_raw, y_tr_raw, X_te_raw) {
 }
 
 # ==============================================================================
-# Main Loop (Eco-ISEA3H Data)
+# Main Loop (Plant Data)
 # ==============================================================================
 cat("======================================================================\n")
 cat(sprintf("  CAST Plant Multi-Species Experiment: %s\n", REGION))

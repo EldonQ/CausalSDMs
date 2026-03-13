@@ -1,5 +1,5 @@
 """
-Table 2 & Table S1: Model Performance Comparison — EcoISEA3H
+Table 2 & Table S1: Model Performance Comparison — Plant
 Booktabs-style academic tables (Nature/MEE journal format)
 """
 
@@ -13,15 +13,15 @@ import matplotlib.font_manager as fm
 from scipy.stats import wilcoxon
 
 os.chdir("E:/CausalSDMs")
-fig_dir = "figures/case2_eco/plot"
+fig_dir = "figures/case4_plant/plot"
 os.makedirs(fig_dir, exist_ok=True)
 
 # ── Load data ────────────────────────────────────────────────────────────────
-results = pd.read_csv("output/case2_eco/all_results_v3.csv")
-dag_info = pd.read_csv("output/case2_eco/all_dag_info_v3.csv")
-ate_data = pd.read_csv("output/case2_eco/all_ate_results_v3.csv")
+results = pd.read_csv("output/case4_plant/all_results_v3.csv")
+dag_info = pd.read_csv("output/case4_plant/all_dag_info_v3.csv")
+ate_data = pd.read_csv("output/case4_plant/all_ate_results_v3.csv")
 sp_meta = pd.read_csv(
-    "outputs/EcoISEA3H/Res9/CAST_ready/CAST_Species_Summary.csv"
+    "outputs/Plant/Res9/CAST_ready/CAST_Species_Summary.csv"
 )
 sp_meta["species"] = sp_meta["species"].str.replace(" ", "_")
 
@@ -340,7 +340,7 @@ for _, row in summary_df.iterrows():
 fig1, ax1 = plt.subplots(figsize=(14, 6))
 draw_booktabs_table(
     ax1, header, data_rows, col_widths=col_w,
-    title=f"Table 2  Model performance comparison across {n_species} mammal species",
+    title=f"Table 2  Model performance comparison across {n_species} plant species",
     footnote=(
         "Notes: All models share the same 11 foundational eco-hydroclimatic drivers. "
         "AUC and TSS are reported as mean±sd across species. "
@@ -453,7 +453,7 @@ fig2, ax2 = plt.subplots(figsize=(18, fig_h))
 
 draw_booktabs_table(
     ax2, s1_header, s1_rows, col_widths=s1_colw,
-    title=f"Table S1  Per-species performance detail ({n_species} species, EcoISEA3H)",
+    title=f"Table S1  Per-species performance detail ({n_species} species, Plant)",
     footnote=(
         "Notes: Bold = best AUC for each species. Species grouped by taxonomic family. "
         "ΔAUC = CAST − competitor (positive = CAST advantage). "
@@ -497,7 +497,7 @@ def to_md_table(header_row, d_rows):
 
 try:
     with open(os.path.join(fig_dir, "table2_performance_summary.md"), "w", encoding="utf-8") as f:
-        f.write(f"### Table 2: Model performance comparison across {n_species} mammal species (EcoISEA3H, China)\n\n")
+        f.write(f"### Table 2: Model performance comparison across {n_species} plant species (Plant, China)\n\n")
         f.write(to_md_table(header[0], data_rows))
         f.write("\n\n*Notes: n = 32 species. AUC = Area Under ROC Curve; TSS = True Skill Statistic. ")
         f.write("Bold = best across all models. Win/Tie/Loss = species-level comparison vs CAST (AUC). ")
@@ -507,7 +507,7 @@ try:
     print("✓ Saved table2_performance_summary.md")
 
     with open(os.path.join(fig_dir, "tableS1_per_species_detail.md"), "w", encoding="utf-8") as f:
-        f.write(f"### Table S1: Per-species performance detail ({n_species} species, EcoISEA3H)\n\n")
+        f.write(f"### Table S1: Per-species performance detail ({n_species} species, Plant)\n\n")
         f.write(to_md_table(s1_header[0], s1_rows))
         f.write("\n\n*Notes: Bold = best AUC for each species. Species grouped by taxonomic family. ")
         f.write("ΔAUC = CAST − competitor (positive = CAST advantage). ")

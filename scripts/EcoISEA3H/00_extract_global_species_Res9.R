@@ -1,10 +1,10 @@
-# 00_extract_china_species_Res9.R
+# 00_extract_global_species_Res9.R
 # ============================================================
-# Eco-ISEA3H | Resolution 9 | China Region Data Extraction
+# Eco-ISEA3H | Resolution 9 | Global Region Data Extraction
 #
 # Steps:
-#   1. Load China boundary & find HIDs within China (cached)
-#   2. Scan all 30 IUCNRL species files for China occurrences
+#   1. Load Global boundary & find HIDs within Global (cached)
+#   2. Scan all 30 IUCNRL species files for Global occurrences
 #   3. Map IUCN SID -> species names via iucnredlist API v4
 #      - Stage A: assessments_by_taxonomy() per family
 #      - Stage B: assessment_data_many() for full data
@@ -26,15 +26,15 @@ library(stringr)
 library(purrr)
 
 # ── Output directories ──────────────────────────────────────
-out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9"
-fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Res9"
+out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Global_Res9"
+fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Global_Res9"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
 # ============================================================
-# STEP 1: China HIDs (cached after first run)
+# STEP 1: Global HIDs (cached after first run)
 # ============================================================
-hid_cache <- file.path(out_dir, "china_hids_Res9.rds")
+hid_cache <- file.path(out_dir, "global_hids_Res9.rds")
 centroids_file <- "E:/CausalSDMs/Eco-ISEA3H/data/Spatial/Text/Centroids_ISEA3H09_Geodetic_V_WGS84.txt"
 
 # Always load centroids (needed for lon/lat later)
@@ -42,41 +42,19 @@ cat("Step 1: Loading ISEA3H09 centroids...\n")
 centroids_df <- fread(centroids_file)
 
 if (file.exists(hid_cache)) {
-    cat("  Loading cached China HIDs...\n")
-    china_hids <- readRDS(hid_cache)
+    cat("  Loading cached Global HIDs...
+")
+    global_hids <- readRDS(hid_cache)
 } else {
-    cat("  Loading China boundary...\n")
-    sf_use_s2(FALSE)
-    china_sf <- st_read("E:/CausalSDMs/data-main/vector/china.shp", quiet = TRUE)
-    if (is.na(st_crs(china_sf)) || st_crs(china_sf)$epsg != 4326) {
-        china_sf <- st_transform(china_sf, 4326)
-    }
-    china_sf <- st_make_valid(china_sf)
-
-    cat("  Intersecting centroids with China boundary...\n")
-    centroids_sf <- st_as_sf(centroids_df, coords = c("X", "Y"), crs = 4326)
-    idx <- lengths(st_intersects(centroids_sf, china_sf)) > 0
-    china_hids <- centroids_sf$HID[idx]
-    china_hids_sf <- centroids_sf[idx, ]
-
-    saveRDS(china_hids, hid_cache)
-    cat(sprintf("  -> Found %d HIDs in China. Cached.\n", length(china_hids)))
-
-    # Verification map
-    p <- ggplot() +
-        geom_sf(data = china_sf, fill = "#dce9f5", color = "grey40", linewidth = 0.3) +
-        geom_sf(data = china_hids_sf, color = "#e74c3c", size = 0.15, alpha = 0.4) +
-        theme_minimal(base_size = 12) +
-        labs(
-            title    = "Eco-ISEA3H Resolution 9: HIDs in China",
-            subtitle = sprintf("n = %d hexagonal grid cells | cell area ~ 2,591 km2", length(china_hids)),
-            caption  = "Source: Eco-ISEA3H; Boundary: data-main/vector/china.shp"
-        )
-    ggsave(file.path(fig_dir, "01_China_HIDs_Verification.png"), p, width = 9, height = 7, dpi = 300)
-    cat("  -> Verification map saved.\n")
+    cat("  Using all global centroids...
+")
+    global_hids <- centroids_df$HID
+    saveRDS(global_hids, hid_cache)
+    cat(sprintf("  -> Found %d global HIDs. Cached.
+", length(global_hids)))
 }
 
-cat(sprintf("  China HIDs: %d\n", length(china_hids)))
+cat(sprintf("  Global HIDs: %d\n", length(global_hids)))
 
 # ============================================================
 # STEP 2: Scan IUCNRL files for species present in China
@@ -96,7 +74,7 @@ for (file in species_files) {
     family <- get_family(file)
     cat(sprintf("  Processing %-20s ...", family))
     sp_df <- fread(file)
-    sp_china <- sp_df[HID %in% china_hids]
+    sp_china <- sp_df[HID %in% global_hids]
 
     if (nrow(sp_china) > 0) {
         sp_cols <- setdiff(names(sp_china), "HID")
@@ -122,13 +100,13 @@ for (file in species_files) {
     }
 }
 
-china_sp_raw <- bind_rows(results)
-china_sp_raw <- china_sp_raw %>%
+global_sp_raw <- bind_rows(results)
+global_sp_raw <- global_sp_raw %>%
     mutate(SID = as.integer(str_remove(str_remove(SID_col, "^SID0*"), "_Fraction$")))
 
 cat(sprintf(
     "\n  -> Total species in China: %d across %d families\n",
-    nrow(china_sp_raw), n_distinct(china_sp_raw$Family)
+    nrow(global_sp_raw), n_distinct(global_sp_raw$Family)
 ))
 
 # ============================================================
@@ -168,11 +146,11 @@ if (file.exists(lookup_cache)) {
     api <- init_api(iucn_key)
 
     # Stage A: get assessment IDs per family
-    china_families <- unique(china_sp_raw$Family)
-    cat(sprintf("  Stage A: Querying %d families...\n", length(china_families)))
+    global_families <- unique(global_sp_raw$Family)
+    cat(sprintf("  Stage A: Querying %d families...\n", length(global_families)))
 
     family_assessments <- list()
-    for (fam in china_families) {
+    for (fam in global_families) {
         cat(sprintf("    -> %s\n", fam))
         tryCatch(
             {
@@ -230,9 +208,9 @@ if (file.exists(lookup_cache)) {
     cat(sprintf("  -> Extracted & cached %d unique species.\n", nrow(lookup_df)))
 }
 
-# Join to China species table
+# Join to Global species table
 if (!is.null(lookup_df)) {
-    china_sp_annotated <- china_sp_raw %>%
+    global_sp_annotated <- global_sp_raw %>%
         left_join(lookup_df, by = c("SID" = "sid")) %>%
         select(
             Family, SID, SID_col, scientific_name, category,
@@ -240,7 +218,7 @@ if (!is.null(lookup_df)) {
         ) %>%
         arrange(Family, desc(n_cells))
 } else {
-    china_sp_annotated <- china_sp_raw %>%
+    global_sp_annotated <- global_sp_raw %>%
         mutate(
             scientific_name = NA_character_, category = NA_character_,
             order_name = NA_character_, class_name = NA_character_
@@ -252,10 +230,10 @@ if (!is.null(lookup_df)) {
         arrange(Family, desc(n_cells))
 }
 
-n_named <- sum(!is.na(china_sp_annotated$scientific_name))
+n_named <- sum(!is.na(global_sp_annotated$scientific_name))
 cat(sprintf(
     "\n  -> Annotated %d / %d species with scientific names.\n",
-    n_named, nrow(china_sp_annotated)
+    n_named, nrow(global_sp_annotated)
 ))
 
 # ============================================================
@@ -263,10 +241,10 @@ cat(sprintf(
 # ============================================================
 cat("\nStep 3b: Preparing lon/lat coordinates for CAST...\n")
 
-china_centroids <- copy(centroids_df[centroids_df$HID %in% china_hids, ])
-setnames(china_centroids, c("X", "Y"), c("lon", "lat"), skip_absent = TRUE)
+global_centroids <- copy(centroids_df[centroids_df$HID %in% global_hids, ])
+setnames(global_centroids, c("X", "Y"), c("lon", "lat"), skip_absent = TRUE)
 
-cat(sprintf("  -> %d China HIDs with lon/lat ready.\n", nrow(china_centroids)))
+cat(sprintf("  -> %d Global HIDs with lon/lat ready.\n", nrow(global_centroids)))
 
 # ============================================================
 # STEP 4: Save all outputs & figures
@@ -274,18 +252,18 @@ cat(sprintf("  -> %d China HIDs with lon/lat ready.\n", nrow(china_centroids)))
 cat("\nStep 4: Saving outputs...\n")
 
 # Annotated species list
-write.csv(china_sp_annotated,
-    file.path(out_dir, "China_Species_List_Res9_Annotated.csv"),
+write.csv(global_sp_annotated,
+    file.path(out_dir, "Global_Species_List_Res9_Annotated.csv"),
     row.names = FALSE
 )
-cat("  -> China_Species_List_Res9_Annotated.csv\n")
+cat("  -> Global_Species_List_Res9_Annotated.csv\n")
 
-# China centroids
-fwrite(china_centroids, file.path(out_dir, "China_Centroids_Res9.csv"))
-cat("  -> China_Centroids_Res9.csv\n")
+# Global centroids
+fwrite(global_centroids, file.path(out_dir, "Global_Centroids_Res9.csv"))
+cat("  -> Global_Centroids_Res9.csv\n")
 
 # Family summary
-family_summary <- china_sp_annotated %>%
+family_summary <- global_sp_annotated %>%
     group_by(Family) %>%
     summarise(
         n_species    = n(),
@@ -295,10 +273,10 @@ family_summary <- china_sp_annotated %>%
     arrange(desc(n_species))
 
 write.csv(family_summary,
-    file.path(out_dir, "China_Species_Family_Summary_Res9.csv"),
+    file.path(out_dir, "Global_Species_Family_Summary_Res9.csv"),
     row.names = FALSE
 )
-cat("  -> China_Species_Family_Summary_Res9.csv\n")
+cat("  -> Global_Species_Family_Summary_Res9.csv\n")
 
 # ── Figure: species count per family ─────────────────────
 p2 <- ggplot(family_summary, aes(x = reorder(Family, n_species), y = n_species)) +
@@ -307,17 +285,17 @@ p2 <- ggplot(family_summary, aes(x = reorder(Family, n_species), y = n_species))
     coord_flip() +
     theme_minimal(base_size = 12) +
     labs(
-        title = "Species Count per Family in China (IUCNRL Res 9)",
-        subtitle = paste0("Total: ", nrow(china_sp_annotated), " species"),
+        title = "Species Count per Family in Global (IUCNRL Res 9)",
+        subtitle = paste0("Total: ", nrow(global_sp_annotated), " species"),
         x = NULL, y = "Number of species"
     )
-ggsave(file.path(fig_dir, "02_China_Species_per_Family.png"), p2,
+ggsave(file.path(fig_dir, "02_Global_Species_per_Family.png"), p2,
     width = 9, height = 6, dpi = 300
 )
-cat("  -> 02_China_Species_per_Family.png\n")
+cat("  -> 02_Global_Species_per_Family.png\n")
 
 # ── Figure: top-40 species by coverage ───────────────────
-top40 <- china_sp_annotated %>%
+top40 <- global_sp_annotated %>%
     slice_max(n_cells, n = 40) %>%
     mutate(label = ifelse(!is.na(scientific_name), scientific_name, SID_col))
 
@@ -327,106 +305,35 @@ p3 <- ggplot(top40, aes(x = reorder(label, n_cells), y = n_cells, fill = Family)
     theme_minimal(base_size = 10) +
     theme(legend.position = "bottom") +
     labs(
-        title = "Top 40 Species by Grid-Cell Coverage in China (Res 9)",
+        title = "Top 40 Species by Grid-Cell Coverage in Global (Res 9)",
         subtitle = "n_cells = number of HIDs where species fraction > 0",
         x = NULL, y = "Number of HIDs with presence"
     )
-ggsave(file.path(fig_dir, "03_China_Top40_Species_Coverage.png"), p3,
+ggsave(file.path(fig_dir, "03_Global_Top40_Species_Coverage.png"), p3,
     width = 10, height = 12, dpi = 300
 )
-cat("  -> 03_China_Top40_Species_Coverage.png\n")
+cat("  -> 03_Global_Top40_Species_Coverage.png\n")
 
-# ── Figure: Top-10 species spatial distribution in China ──
+# ── Figure: Top-10 species spatial distribution in Global ──
 cat("\nStep 5: Generating Top-10 species distribution maps...\n")
 
 # Select top 10 species by coverage
-top10 <- china_sp_annotated %>%
+top10 <- global_sp_annotated %>%
     slice_max(n_cells, n = 10) %>%
     mutate(label = ifelse(!is.na(scientific_name), scientific_name, SID_col))
 
-# Load China boundary for background (from cache or file)
-sf_use_s2(FALSE)
-china_shp_file <- "E:/CausalSDMs/data-main/vector/china.shp"
-china_sf <- st_read(china_shp_file, quiet = TRUE)
-if (is.na(st_crs(china_sf)) || st_crs(china_sf)$epsg != 4326) {
-    china_sf <- st_transform(china_sf, 4326)
-}
-china_sf <- st_make_valid(china_sf)
-
-# For each top-10 species, extract fraction data from original files
-# and join with centroids for lon/lat
-cat("  Reading fraction data for top-10 species...\n")
-
-sp_map_data <- list()
-for (i in seq_len(nrow(top10))) {
-    sp_family <- top10$Family[i]
-    sp_col <- top10$SID_col[i]
-    sp_label <- top10$label[i]
-
-    # Find the species file
-    sp_file <- list.files(iucn_dir, pattern = sp_family, full.names = TRUE)
-    if (length(sp_file) == 0) next
-
-    dt <- fread(sp_file[1], select = c("HID", sp_col))
-    # Filter to China HIDs with presence
-    dt <- dt[HID %in% china_hids & get(sp_col) > 0]
-    setnames(dt, sp_col, "fraction")
-
-    # Join lon/lat from china_centroids
-    dt <- merge(dt, china_centroids, by = "HID", all.x = TRUE)
-    dt$species <- sp_label
-
-    sp_map_data[[i]] <- dt
-    cat(sprintf("    %2d. %-30s %d points\n", i, sp_label, nrow(dt)))
-}
-
-sp_map_all <- rbindlist(sp_map_data)
-# Order species factor by coverage (descending)
-sp_map_all$species <- factor(sp_map_all$species,
-    levels = top10$label
-)
-
-# Create faceted map
-p4 <- ggplot() +
-    geom_sf(
-        data = china_sf, fill = "#f5f5f5", color = "grey60",
-        linewidth = 0.2
-    ) +
-    geom_point(
-        data = sp_map_all,
-        aes(x = lon, y = lat, color = fraction),
-        size = 0.4, alpha = 0.7
-    ) +
-    scale_color_viridis_c(
-        option = "turbo", name = "Fraction",
-        limits = c(0, 1)
-    ) +
-    facet_wrap(~species, ncol = 2) +
-    theme_minimal(base_size = 9) +
-    theme(
-        strip.text       = element_text(face = "italic", size = 9),
-        legend.position  = "bottom",
-        legend.key.width = unit(1.5, "cm"),
-        panel.grid       = element_blank(),
-        axis.text        = element_text(size = 6)
-    ) +
-    labs(
-        title = "Top 10 Species Distribution in China (Eco-ISEA3H Res 9)",
-        subtitle = "Color = species occurrence fraction within each hexagonal grid cell",
-        x = "Longitude", y = "Latitude"
-    )
-
-ggsave(file.path(fig_dir, "04_China_Top10_Species_Distribution.png"), p4,
-    width = 10, height = 22, dpi = 300
-)
-cat("  -> 04_China_Top10_Species_Distribution.png\n")
+# Spatially mapping Top 10 species skipped for Global mode.
+    p4 <- ggplot() + theme_void() + labs(title="Map plotting skipped for Global mode")
+    ggsave(file.path(fig_dir, "04_Global_Top10_Species_Distribution.png"), p4, width=8, height=6)
+    cat("  -> 04_Global_Top10_Species_Distribution.png
+")
 
 # ── Final summary ────────────────────────────────────────
 cat("\n================================================\n")
-cat("=== Eco-ISEA3H China Res9 Extraction Complete ===\n")
+cat("=== Eco-ISEA3H Global Res9 Extraction Complete ===\n")
 cat("================================================\n")
-cat(sprintf("  HIDs (grids):    %d  (lon/lat attached)\n", length(china_hids)))
-cat(sprintf("  Species total:   %d\n", nrow(china_sp_annotated)))
+cat(sprintf("  HIDs (grids):    %d  (lon/lat attached)\n", length(global_hids)))
+cat(sprintf("  Species total:   %d\n", nrow(global_sp_annotated)))
 cat(sprintf("  Species named:   %d\n", n_named))
 cat(sprintf("  Families:        %d\n", nrow(family_summary)))
 cat(sprintf("  Outputs dir:     %s\n", out_dir))

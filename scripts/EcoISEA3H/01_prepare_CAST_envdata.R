@@ -1,12 +1,12 @@
 # 01_prepare_CAST_envdata.R
 # ============================================================
-# Eco-ISEA3H | Resolution 9 | China Region
+# Eco-ISEA3H | Resolution 9 | Global Region
 # Prepare environmental data for CAST modeling pipeline
 #
 # This script:
 #   1. Loads annotated species list from 00_extract (with filtering)
 #   2. Loads ALL environmental data layers from Eco-ISEA3H
-#   3. Subsets to China HIDs and merges into a single env table
+#   3. Subsets to Global HIDs and merges into a single env table
 #   4. For each qualifying species, creates a model-ready dataset:
 #      HID, lon, lat, presence (0/1), fraction, env variables
 #   5. Saves per-species CSVs and a summary
@@ -24,9 +24,9 @@ library(ggplot2)
 
 # ── Paths ────────────────────────────────────────────────
 base_dir <- "E:/CausalSDMs/Eco-ISEA3H/data/ISEA3H09"
-out_dir_00 <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9"
-out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready"
-fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Res9"
+out_dir_00 <- "E:/CausalSDMs/outputs/EcoISEA3H/Global_Res9"
+out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Global_Res9/CAST_ready"
+fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Global_Res9"
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 cat("============================================================\n")
@@ -39,7 +39,7 @@ cat("============================================================\n")
 # ============================================================
 cat("\nStep 1: Loading annotated species list...\n")
 
-sp_file <- file.path(out_dir_00, "China_Species_List_Res9_Annotated.csv")
+sp_file <- file.path(out_dir_00, "Global_Species_List_Res9_Annotated.csv")
 sp_all <- fread(sp_file)
 cat(sprintf("  Total species: %d\n", nrow(sp_all)))
 
@@ -52,10 +52,10 @@ cat(sprintf(
 print(sp_selected[, .(Family, SID, scientific_name, category, n_cells, mean_frac)])
 
 # Load centroids
-coord_file <- file.path(out_dir_00, "China_Centroids_Res9.csv")
-china_coords <- fread(coord_file)
-china_hids <- china_coords$HID
-cat(sprintf("  China HIDs: %d\n", length(china_hids)))
+coord_file <- file.path(out_dir_00, "Global_Centroids_Res9.csv")
+global_coords <- fread(coord_file)
+global_hids <- global_coords$HID
+cat(sprintf("  Global HIDs: %d\n", length(global_hids)))
 
 # ============================================================
 # STEP 2: Load all environmental variables
@@ -73,7 +73,7 @@ bio_df <- fread(bio_file)
 bio_cols <- grep("^BIO", names(bio_df), value = TRUE)
 new_bio <- tolower(str_replace(bio_cols, "_Mean$", ""))
 setnames(bio_df, bio_cols, new_bio)
-bio_df <- bio_df[HID %in% china_hids]
+bio_df <- bio_df[HID %in% global_hids]
 cat(sprintf("    %d variables, %d rows\n", length(new_bio), nrow(bio_df)))
 
 # ── 2b. Elevation (SRTM) ────────────────────────────────
@@ -84,7 +84,7 @@ elev_file <- file.path(
 )
 elev_df <- fread(elev_file)
 setnames(elev_df, "Elevation_Mean", "elevation")
-elev_df <- elev_df[HID %in% china_hids]
+elev_df <- elev_df[HID %in% global_hids]
 cat(sprintf("    %d rows\n", nrow(elev_df)))
 
 # ── 2c. ENVIREM Climate indices ──────────────────────────
@@ -98,7 +98,7 @@ envclim_df <- fread(envclim_file)
 ec_cols <- setdiff(names(envclim_df), "HID")
 new_ec <- tolower(str_replace(ec_cols, "_Mean$", ""))
 setnames(envclim_df, ec_cols, new_ec)
-envclim_df <- envclim_df[HID %in% china_hids]
+envclim_df <- envclim_df[HID %in% global_hids]
 cat(sprintf("    %d variables, %d rows\n", length(new_ec), nrow(envclim_df)))
 
 # ── 2d. ENVIREM Topography ───────────────────────────────
@@ -111,7 +111,7 @@ topo_df <- fread(topo_file)
 tc_cols <- setdiff(names(topo_df), "HID")
 new_tc <- tolower(str_replace(tc_cols, "_Mean$", ""))
 setnames(topo_df, tc_cols, new_tc)
-topo_df <- topo_df[HID %in% china_hids]
+topo_df <- topo_df[HID %in% global_hids]
 cat(sprintf("    %d variables, %d rows\n", length(new_tc), nrow(topo_df)))
 
 # ── 2e. MODIS Vegetation Cover (Tree, NonTree, Bare) ─────
@@ -124,7 +124,7 @@ vcf_df <- fread(vcf_file)
 vc_cols <- setdiff(names(vcf_df), "HID")
 new_vc <- tolower(str_replace(vc_cols, "_Mean$", ""))
 setnames(vcf_df, vc_cols, new_vc)
-vcf_df <- vcf_df[HID %in% china_hids]
+vcf_df <- vcf_df[HID %in% global_hids]
 cat(sprintf("    %d variables, %d rows\n", length(new_vc), nrow(vcf_df)))
 
 # ── 2f. ECMWF ERA-40 Climate Extremes (ETCCDI) ──────────
@@ -137,7 +137,7 @@ etccdi_df <- fread(etccdi_file)
 et_cols <- setdiff(names(etccdi_df), "HID")
 new_et <- paste0("etccdi_", tolower(str_replace(et_cols, "_IDW1N10$", "")))
 setnames(etccdi_df, et_cols, new_et)
-etccdi_df <- etccdi_df[HID %in% china_hids]
+etccdi_df <- etccdi_df[HID %in% global_hids]
 cat(sprintf("    %d variables, %d rows\n", length(new_et), nrow(etccdi_df)))
 
 # ── 2g. Land Cover IGBP Mode (categorical) ──────────────
@@ -156,7 +156,7 @@ if (!file.exists(lc_file)) {
 lc_df <- fread(lc_file)
 lc_cols <- setdiff(names(lc_df), "HID")
 setnames(lc_df, lc_cols[1], "landcover_igbp")
-lc_df <- lc_df[HID %in% china_hids, .(HID, landcover_igbp)]
+lc_df <- lc_df[HID %in% global_hids, .(HID, landcover_igbp)]
 cat(sprintf("    %d rows\n", nrow(lc_df)))
 
 # ============================================================
@@ -164,7 +164,7 @@ cat(sprintf("    %d rows\n", nrow(lc_df)))
 # ============================================================
 cat("\nStep 3: Merging all environmental layers...\n")
 
-env_master <- china_coords # starts with HID, lon, lat
+env_master <- global_coords # starts with HID, lon, lat
 env_master <- merge(env_master, bio_df, by = "HID", all.x = TRUE)
 env_master <- merge(env_master, elev_df, by = "HID", all.x = TRUE)
 env_master <- merge(env_master, envclim_df, by = "HID", all.x = TRUE)
@@ -199,9 +199,9 @@ if (length(high_na) > 0) {
 }
 
 # Save master env table
-fwrite(env_master, file.path(out_dir, "China_EnvData_Res9_Master.csv"))
+fwrite(env_master, file.path(out_dir, "Global_EnvData_Res9_Master.csv"))
 cat(sprintf(
-    "  -> China_EnvData_Res9_Master.csv (%d x %d)\n",
+    "  -> Global_EnvData_Res9_Master.csv (%d x %d)\n",
     nrow(env_master), ncol(env_master)
 ))
 
@@ -244,7 +244,7 @@ for (i in seq_len(nrow(sp_selected))) {
     sp_frac <- fread(fam_file[1], select = c("HID", sp$SID_col))
     setnames(sp_frac, sp$SID_col, "fraction")
 
-    # Create full dataset: all China HIDs with env data
+    # Create full dataset: all Global HIDs with env data
     sp_df <- copy(env_master)
     sp_df <- merge(sp_df, sp_frac, by = "HID", all.x = TRUE)
     sp_df[is.na(fraction), fraction := 0]
@@ -335,7 +335,7 @@ p_prev <- ggplot(
     scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
     theme_minimal(base_size = 11) +
     labs(
-        title = "Species Prevalence in China (CAST-Ready Dataset)",
+        title = "Species Prevalence in Global (CAST-Ready Dataset)",
         subtitle = sprintf(
             "n_cells >= %d | %d species | %d env variables",
             MIN_CELLS, nrow(sp_summary_df), sp_summary_df$n_env_vars[1]
@@ -379,7 +379,7 @@ cat("=== CAST Environment Data Preparation Complete! ===\n")
 cat("====================================================\n")
 cat(sprintf("  Species qualifying:  %d (n_cells >= %d)\n", nrow(sp_summary_df), MIN_CELLS))
 cat(sprintf("  Env variables:       %d\n", length(env_cols)))
-cat(sprintf("  Master env table:    %s\n", file.path(out_dir, "China_EnvData_Res9_Master.csv")))
+cat(sprintf("  Master env table:    %s\n", file.path(out_dir, "Global_EnvData_Res9_Master.csv")))
 cat(sprintf("  Per-species dir:     %s\n", sp_data_dir))
 cat(sprintf("  Summary:             %s\n", file.path(out_dir, "CAST_Species_Summary.csv")))
 cat("====================================================\n")

@@ -9,17 +9,17 @@
 #   (b) 模型排名分布 (stacked bar)
 #
 # 数据来源:
-#   output/case2_eco/all_results_v3.csv
+#   output/case4_plant/all_results_v3.csv
 #
 # 运行: setwd("E:/CausalSDMs")
-#       source("scripts/EcoISEA3H/plot/fig4_performance_robustness.R")
+#       source("scripts/Plant/plot/fig4_performance_robustness.R")
 ################################################################################
 
 rm(list = ls())
 setwd("E:/CausalSDMs")
 
-fig_dir <- "figures/case2_eco/plot"
-tbl_dir <- "figures/case2_eco/tables"
+fig_dir <- "figures/case4_plant/plot"
+tbl_dir <- "figures/case4_plant/tables"
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(tbl_dir, recursive = TRUE, showWarnings = FALSE)
 
@@ -89,7 +89,7 @@ save_fig <- function(plt, name, w, h) {
 # ══════════════════════════════════════════════════════════════════════════════
 # 读取数据
 # ══════════════════════════════════════════════════════════════════════════════
-d <- read.csv("output/case2_eco/all_results_v3.csv", stringsAsFactors = FALSE) %>%
+d <- read.csv("output/case4_plant/all_results_v3.csv", stringsAsFactors = FALSE) %>%
     filter(!is.na(auc_mean), model %in% models_ordered) %>%
     mutate(model = factor(model, levels = models_ordered))
 

@@ -7,7 +7,7 @@ library(data.table)
 library(dplyr)
 library(car)
 
-VIF_THRESHOLD <- 5
+VIF_THRESHOLD <- 10
 out_dir <- "E:/CausalSDMs/outputs/Plant/CAST_ready"
 fig_dir <- "E:/CausalSDMs/figures/Plant/plot"
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)

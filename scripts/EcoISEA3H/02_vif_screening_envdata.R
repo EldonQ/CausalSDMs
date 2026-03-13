@@ -1,6 +1,6 @@
 # 02_vif_screening_envdata.R
 # ============================================================
-# Eco-ISEA3H | Resolution 9 | China Region
+# Eco-ISEA3H | Resolution 9 | Global Region
 # VIF-based variable screening before CAST modeling
 #
 # Strategy (3-stage):
@@ -8,8 +8,8 @@
 #   Stage 2: Iterative VIF elimination (threshold = 10)
 #   Stage 3: Rebuild per-species CAST-ready datasets with clean vars
 #
-# Input:  outputs/EcoISEA3H/Res9/CAST_ready/China_EnvData_Res9_Master.csv
-# Output: outputs/EcoISEA3H/Res9/CAST_ready/China_EnvData_Res9_Screened.csv
+# Input:  outputs/EcoISEA3H/Res9/CAST_ready/Global_EnvData_Res9_Master.csv
+# Output: outputs/EcoISEA3H/Res9/CAST_ready/Global_EnvData_Res9_Screened.csv
 #         outputs/EcoISEA3H/Res9/CAST_ready/species_data_screened/
 # ============================================================
 
@@ -20,12 +20,12 @@ library(ggplot2)
 library(corrplot)
 
 # ── Configurable ─────────────────────────────────────────
-VIF_THRESHOLD <- 5 # Threshold 5 follows Zuur et al. (2010) to ensure robust causal DAG learning and structure identifiability.
+VIF_THRESHOLD <- 10 # Threshold 5 follows Zuur et al. (2010) to ensure robust causal DAG learning and structure identifiability.
 MIN_CELLS <- 200 # Same as 01_prepare
 # ─────────────────────────────────────────────────────────
 
-out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready"
-fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Res9"
+out_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Global_Res9/CAST_ready"
+fig_dir <- "E:/CausalSDMs/figures/EcoISEA3H/Global_Res9"
 sp_dir_in <- file.path(out_dir, "species_data")
 sp_dir_out <- file.path(out_dir, "species_data_screened")
 dir.create(sp_dir_out, recursive = TRUE, showWarnings = FALSE)
@@ -40,7 +40,7 @@ cat("================================================================\n")
 # ============================================================
 cat("\nStep 1: Loading env data & expert pre-filter...\n")
 
-env <- fread(file.path(out_dir, "China_EnvData_Res9_Master.csv"))
+env <- fread(file.path(out_dir, "Global_EnvData_Res9_Master.csv"))
 meta_cols <- c("HID", "lon", "lat")
 all_env <- setdiff(names(env), meta_cols)
 cat(sprintf("  Starting variables: %d\n", length(all_env)))
@@ -266,9 +266,9 @@ cat("\nStep 4: Saving screened data...\n")
 
 # Screened master env table
 env_screened <- env[, c("HID", "lon", "lat", final_vars_full), with = FALSE]
-fwrite(env_screened, file.path(out_dir, "China_EnvData_Res9_Screened.csv"))
+fwrite(env_screened, file.path(out_dir, "Global_EnvData_Res9_Screened.csv"))
 cat(sprintf(
-    "  -> China_EnvData_Res9_Screened.csv (%d x %d)\n",
+    "  -> Global_EnvData_Res9_Screened.csv (%d x %d)\n",
     nrow(env_screened), ncol(env_screened)
 ))
 
@@ -397,7 +397,7 @@ cat(sprintf(
 ))
 cat(sprintf(
     "  Screened env table:   %s\n",
-    file.path(out_dir, "China_EnvData_Res9_Screened.csv")
+    file.path(out_dir, "Global_EnvData_Res9_Screened.csv")
 ))
 cat(sprintf("  Species data dir:     %s\n", sp_dir_out))
 cat("================================================================\n")

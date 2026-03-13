@@ -15,16 +15,16 @@
 # a specific species, or leave it NULL to auto-select the most informative one.
 #
 # Data required:
-#   output/case2_eco/all_results_v3.csv
-#   output/case2_eco/all_screening_v3.csv
-#   output/case2_eco/all_ate_results_v3.csv
-#   output/case2_eco/all_dag_edges_v3.csv
-#   output/case2_eco/all_role_info_v3.csv
-#   output/case2_eco/all_dag_info_v3.csv
+#   output/case4_plant/all_results_v3.csv
+#   output/case4_plant/all_screening_v3.csv
+#   output/case4_plant/all_ate_results_v3.csv
+#   output/case4_plant/all_dag_edges_v3.csv
+#   output/case4_plant/all_role_info_v3.csv
+#   output/case4_plant/all_dag_info_v3.csv
 #
 #
 # Run: setwd("E:/CausalSDMs")
-#      source("scripts/EcoISEA3H/plot/fig2_single_species_showcase.R")
+#      source("scripts/Plant/plot/fig2_single_species_showcase.R")
 ################################################################################
 
 rm(list = ls())
@@ -34,7 +34,7 @@ setwd("E:/CausalSDMs")
 SHOW_MOCK_BOUNDARY <- FALSE # If TRUE, draws a red dashed decision boundary
 MOCK_RETAIN_N <- 6 # Number of variables to retain if using mock boundary
 
-fig_dir <- "figures/case2_eco/plot"
+fig_dir <- "figures/case4_plant/plot"
 dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
 
 library(tidyverse)
@@ -60,15 +60,15 @@ pal <- list(
 )
 
 # ── Load ALL data ────────────────────────────────────────────────────────────
-results <- read.csv("output/case2_eco/all_results_v3.csv",
+results <- read.csv("output/case4_plant/all_results_v3.csv",
     stringsAsFactors = FALSE
 )
 
-screening <- read.csv("output/case2_eco/all_screening_v3.csv",
+screening <- read.csv("output/case4_plant/all_screening_v3.csv",
     stringsAsFactors = FALSE
 )
 
-ate_all <- read.csv("output/case2_eco/all_ate_results_v3.csv",
+ate_all <- read.csv("output/case4_plant/all_ate_results_v3.csv",
     stringsAsFactors = FALSE
 ) %>%
     mutate(
@@ -79,20 +79,20 @@ ate_all <- read.csv("output/case2_eco/all_ate_results_v3.csv",
         ci_upper    = coef + 1.96 * se
     )
 
-dag_edges <- read.csv("output/case2_eco/all_dag_edges_v3.csv",
+dag_edges <- read.csv("output/case4_plant/all_dag_edges_v3.csv",
     stringsAsFactors = FALSE
 )
 
-role_info <- read.csv("output/case2_eco/all_role_info_v3.csv",
+role_info <- read.csv("output/case4_plant/all_role_info_v3.csv",
     stringsAsFactors = FALSE
 )
 
-dag_info <- read.csv("output/case2_eco/all_dag_info_v3.csv",
+dag_info <- read.csv("output/case4_plant/all_dag_info_v3.csv",
     stringsAsFactors = FALSE
 )
 
 sp_meta <- read.csv(
-    "outputs/EcoISEA3H/Res9/CAST_ready/CAST_Species_Summary.csv",
+    "outputs/Plant/Res9/CAST_ready/CAST_Species_Summary.csv",
     stringsAsFactors = FALSE
 ) %>%
     mutate(species = gsub(" ", "_", species))

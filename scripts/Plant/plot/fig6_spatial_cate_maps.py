@@ -17,11 +17,11 @@ Fig 6: 空间 CATE 热力图 — 批量生成，单图单文件
   TARGET_VARS    : 指定变量 (None = 全部已有 CATE 变量)
   INTERP_RES     : 插值分辨率 (度, 越小越精细)
 
-输出: figures/case2_eco/plot/cate_maps/fig6_cate_{species}_{variable}.png/svg
+输出: figures/case4_plant/plot/cate_maps/fig6_cate_{species}_{variable}.png/svg
 
 依赖: pip install cartopy geopandas scipy matplotlib numpy pandas xarray
 
-运行: cd E:/CausalSDMs && python scripts/EcoISEA3H/plot/fig6_spatial_cate_maps.py
+运行: cd E:/CausalSDMs && python scripts/Plant/plot/fig6_spatial_cate_maps.py
 """
 
 import os
@@ -45,18 +45,14 @@ import cartopy.io.shapereader as shpreader
 import geopandas as gpd
 
 warnings.filterwarnings("ignore")
-    
+
 # ══════════════════════════════════════════════════════════════════════════════
 # ★ 可配置参数
 # ══════════════════════════════════════════════════════════════════════════════
 # 绘制一个物种用 ["物种名"]；多个用 ["A", "B"]；None = 全部
-# Rhinopithecus roxellana (Cercopithecidae)
-# Ovis ammon (Bovidae)
-# Macaca mulatta (Cercopithecidae)
-
-TARGET_SPECIES = ["Rhinopithecus_roxellana", "Ovis_ammon", "Macaca_mulatta"]   # 例: ["Alces_alces"] 或 ["Ovis_ammon", "Capra_sibirica"]
+TARGET_SPECIES = None       # 例: ["Alces_alces"] 或 ["Ovis_ammon", "Capra_sibirica"]
 TARGET_VARS    = None          # None = 全部已有 CATE 变量; 或 ["elevation", "bio19"]
-INTERP_RES     = 0.06       # 格点密度：越小点越多；0.06 约 6km，热图点更密
+INTERP_RES     = 0.02       # 格点密度：越小点越多；0.06 约 6km，热图点更密
 # scipy.griddata 仅支持三种: "nearest"=最快 | "linear"=折中 | "cubic"=最慢最平滑
 INTERP_METHOD  = "nearest"
 MASK_BUFFER    = 0.0         # 裁剪时边界外扩(度)；不再外扩，通过 nearest 填充彻底消除白边，避免热图移除边界
@@ -65,7 +61,7 @@ DPI            = 1200       # 输出分辨率
 # ★ 速度优化
 N_WORKERS      = 8         # 并行进程数，0 或 1=单进程，4/8 等=多进程加速
 FAST_PLOT      = True       # True=低分辨率海岸线、不画河流湖泊，出图更快
-DISPLAY_RES    = 0.02        # 若设为浮点(如 0.02)，绘图用此分辨率降采样，加快 pcolormesh
+DISPLAY_RES    = 0.05        # 若设为浮点(如 0.02)，绘图用此分辨率降采样，加快 pcolormesh
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 路径配置
@@ -73,12 +69,12 @@ DISPLAY_RES    = 0.02        # 若设为浮点(如 0.02)，绘图用此分辨率
 BASE_DIR = "E:/CausalSDMs"
 os.chdir(BASE_DIR)
 
-CATE_CSV    = "output/case2_eco/all_spatial_cate_v3.csv"
-ATE_CSV     = "output/case2_eco/all_ate_results_v3.csv"
+CATE_CSV    = "output/case4_plant/all_spatial_cate_v3.csv"
+ATE_CSV     = "output/case4_plant/all_ate_results_v3.csv"
 CHINA_SHP   = "plot-function-main/data/china.shp"      # plotbook 目录下的中国省界
 DASH_SHP    = "plot-function-main/data/dashline.shp"    # 南海断续线
-FIG_DIR     = "figures/case2_eco/plot/cate_maps"
-TBL_DIR     = "figures/case2_eco/tables"
+FIG_DIR     = "figures/case4_plant/plot/cate_maps"
+TBL_DIR     = "figures/case4_plant/tables"
 
 os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(TBL_DIR, exist_ok=True)
