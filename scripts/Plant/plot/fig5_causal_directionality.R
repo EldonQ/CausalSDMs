@@ -10,9 +10,9 @@
 #   (b) RF importance vs |ATE| 散点: 颜色区分因果方向, RF 无法给出的信息
 #   (c) 物种间 Spearman ρ 分布: 预测重要性排名 ≠ 因果效应排名
 #
-# 数据来源:
-#   output/case4_plant/all_ate_results_v3.csv
-#   output/case4_plant/all_screening_v3.csv
+# 数据来源 (Plant 案例, 03_run_Plant_multi_species.R 输出):
+#   output/case4_plant/all_ate_results_plant.csv
+#   output/case4_plant/all_screening_plant.csv
 #
 # 运行: setwd("E:/CausalSDMs")
 #       source("scripts/Plant/plot/fig5_causal_directionality.R")
@@ -50,20 +50,28 @@ theme_pub <- function(base_size = 10) {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 变量显示名称
+# 变量显示名称 (含 Plant 案例变量)
 # ══════════════════════════════════════════════════════════════════════════════
 var_labels <- c(
     "aridityindexthornthwaite" = "Aridity Index",
-    "bio02"                    = "Diurnal Range (Bio02)",
-    "bio15"                    = "Precip. Seasonality (Bio15)",
-    "bio19"                    = "Precip. Coldest Qtr (Bio19)",
-    "elevation"                = "Elevation",
-    "etccdi_cwd"               = "Consecutive Wet Days",
-    "landcover_igbp"           = "Land Cover (IGBP)",
-    "maxtempcoldest"           = "Tmax Coldest Month",
-    "nontree"                  = "Non-tree Vegetation",
-    "topowet"                  = "Topographic Wetness",
-    "tri"                      = "Terrain Ruggedness"
+    "bio02" = "Diurnal Range", "bio_2" = "Mean Diurnal Range",
+    "bio15" = "Precip. Seasonality", "bio_15" = "Precip. Seasonality",
+    "bio19" = "Precip. Coldest Qtr", "bio_19" = "Precip. Coldest Qtr",
+    "bio03" = "Isothermality", "bio_3" = "Isothermality",
+    "bio18" = "Precip. Warmest Qtr", "bio_18" = "Precip. Warmest Qtr",
+    "elevation" = "Elevation", "Elevation" = "Elevation",
+    "etccdi_cwd" = "Consecutive Wet Days",
+    "landcover_igbp" = "Land Cover (IGBP)",
+    "maxtempcoldest" = "Tmax Coldest Month",
+    "nontree" = "Non-tree Vegetation",
+    "topowet" = "Topographic Wetness",
+    "tri" = "Terrain Ruggedness",
+    "Slope" = "Slope", "Aspect" = "Aspect",
+    "ORCDRC" = "Soil Organic C", "PHIHOX" = "Soil pH",
+    "CECSOL" = "Soil CEC", "CLYPPT" = "Clay Content",
+    "SLTPPT" = "Silt Content", "BDTICM" = "Bulk Density",
+    "Lights2009" = "Night Lights", "Built2009" = "Built-up",
+    "Croplands2005" = "Croplands", "Pasture2009" = "Pasture"
 )
 
 get_var_label <- function(x) {
@@ -93,8 +101,9 @@ save_fig <- function(plt, name, w, h) {
 # ══════════════════════════════════════════════════════════════════════════════
 # 读取数据
 # ══════════════════════════════════════════════════════════════════════════════
-ate <- read.csv("output/case4_plant/all_ate_results_v3.csv", stringsAsFactors = FALSE)
-scr <- read.csv("output/case4_plant/all_screening_v3.csv", stringsAsFactors = FALSE)
+ate <- read.csv("output/case4_plant/all_ate_results_plant.csv", stringsAsFactors = FALSE) %>%
+    mutate(coef = as.numeric(coef))
+scr <- read.csv("output/case4_plant/all_screening_plant.csv", stringsAsFactors = FALSE)
 
 n_sp <- n_distinct(ate$species)
 cat(sprintf("数据加载完成: %d 物种\n", n_sp))

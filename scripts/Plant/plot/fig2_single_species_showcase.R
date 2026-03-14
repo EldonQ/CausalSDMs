@@ -14,13 +14,14 @@
 # Species selection: You can manually set USER_TARGET_SPECIES below to showcase
 # a specific species, or leave it NULL to auto-select the most informative one.
 #
-# Data required:
-#   output/case4_plant/all_results_v3.csv
-#   output/case4_plant/all_screening_v3.csv
-#   output/case4_plant/all_ate_results_v3.csv
-#   output/case4_plant/all_dag_edges_v3.csv
-#   output/case4_plant/all_role_info_v3.csv
-#   output/case4_plant/all_dag_info_v3.csv
+# Data required (Plant case, output from 03_run_Plant_multi_species.R):
+#   output/case4_plant/all_results_plant.csv
+#   output/case4_plant/all_screening_plant.csv
+#   output/case4_plant/all_ate_results_plant.csv
+#   output/case4_plant/all_dag_edges_plant.csv
+#   output/case4_plant/all_role_info_plant.csv
+#   output/case4_plant/all_dag_info_plant.csv
+#   (optional) outputs/Plant/Res9/CAST_ready/CAST_Species_Summary.csv for family
 #
 #
 # Run: setwd("E:/CausalSDMs")
@@ -60,15 +61,15 @@ pal <- list(
 )
 
 # ── Load ALL data ────────────────────────────────────────────────────────────
-results <- read.csv("output/case4_plant/all_results_v3.csv",
+results <- read.csv("output/case4_plant/all_results_plant.csv",
     stringsAsFactors = FALSE
 )
 
-screening <- read.csv("output/case4_plant/all_screening_v3.csv",
+screening <- read.csv("output/case4_plant/all_screening_plant.csv",
     stringsAsFactors = FALSE
 )
 
-ate_all <- read.csv("output/case4_plant/all_ate_results_v3.csv",
+ate_all <- read.csv("output/case4_plant/all_ate_results_plant.csv",
     stringsAsFactors = FALSE
 ) %>%
     mutate(
@@ -79,23 +80,26 @@ ate_all <- read.csv("output/case4_plant/all_ate_results_v3.csv",
         ci_upper    = coef + 1.96 * se
     )
 
-dag_edges <- read.csv("output/case4_plant/all_dag_edges_v3.csv",
+dag_edges <- read.csv("output/case4_plant/all_dag_edges_plant.csv",
     stringsAsFactors = FALSE
 )
 
-role_info <- read.csv("output/case4_plant/all_role_info_v3.csv",
+role_info <- read.csv("output/case4_plant/all_role_info_plant.csv",
     stringsAsFactors = FALSE
 )
 
-dag_info <- read.csv("output/case4_plant/all_dag_info_v3.csv",
+dag_info <- read.csv("output/case4_plant/all_dag_info_plant.csv",
     stringsAsFactors = FALSE
 )
 
-sp_meta <- read.csv(
-    "outputs/Plant/Res9/CAST_ready/CAST_Species_Summary.csv",
-    stringsAsFactors = FALSE
-) %>%
-    mutate(species = gsub(" ", "_", species))
+# 物种元数据（若有 CAST_Species_Summary 则取 family，否则用空表）
+sp_meta_path <- "outputs/Plant/Res9/CAST_ready/CAST_Species_Summary.csv"
+if (file.exists(sp_meta_path)) {
+    sp_meta <- read.csv(sp_meta_path, stringsAsFactors = FALSE) %>%
+        mutate(species = gsub(" ", "_", species))
+} else {
+    sp_meta <- data.frame(species = unique(results$species), family = "Plant", stringsAsFactors = FALSE)
+}
 
 # ── AUTO-SELECT best showcase species ────────────────────────────────────────
 species_quality <- ate_all %>%
@@ -111,8 +115,13 @@ species_quality <- ate_all %>%
     ) %>%
     arrange(desc(showcase_score))
 
-# ── Batch generate plots for candidate species ─────────────────────────────
-target_species_list <- c("Rhinopithecus_roxellana", "Macaca_mulatta", "Ovis_ammon")
+# ── 展示物种列表（Plant 案例：从质量分最高的物种中取前 3 个，不足则用全部）────
+target_species_list <- species_quality %>%
+    slice_head(n = 3) %>%
+    pull(species)
+if (length(target_species_list) == 0) {
+    target_species_list <- unique(dag_info$species)[seq_len(min(3, nrow(dag_info)))]
+}
 
 for (target_species in target_species_list) {
     cat(sprintf("\n[Fig 2] Processing target species: %s\n", target_species))
@@ -150,19 +159,25 @@ for (target_species in target_species_list) {
         slice_head(n = cast_n_vars) %>%
         pull(variable)
 
-    # ── Clean Variable Names for Presentation ────────────────────────────────────
+    # ── Clean Variable Names for Presentation (含 Plant 案例变量) ─────────────────
     var_dict <- c(
-        "bio02" = "Diurnal Temp Range",
-        "bio15" = "Precip Seasonality",
-        "bio19" = "Precip Coldest Qtr",
+        "bio02" = "Diurnal Temp Range", "bio_2" = "Mean Diurnal Range",
+        "bio15" = "Precip Seasonality", "bio_15" = "Precip Seasonality",
+        "bio19" = "Precip Coldest Qtr", "bio_19" = "Precip Coldest Qtr",
+        "bio03" = "Isothermality", "bio_3" = "Isothermality",
+        "bio18" = "Precip Warmest Qtr", "bio_18" = "Precip Warmest Qtr",
         "maxtempcoldest" = "Max Temp Coldest Mo",
         "aridityindexthornthwaite" = "Aridity Index",
         "etccdi_cwd" = "Consecutive Wet Days",
-        "elevation" = "Elevation",
-        "tri" = "Terrain Ruggedness",
-        "topowet" = "Topo Wetness Index",
-        "nontree" = "Non-tree Veg",
-        "landcover_igbp" = "Landcover Type"
+        "elevation" = "Elevation", "Elevation" = "Elevation",
+        "tri" = "Terrain Ruggedness", "topowet" = "Topo Wetness Index",
+        "nontree" = "Non-tree Veg", "landcover_igbp" = "Landcover Type",
+        "Slope" = "Slope", "Aspect" = "Aspect",
+        "ORCDRC" = "Soil Organic C", "PHIHOX" = "Soil pH",
+        "CECSOL" = "Soil CEC", "CLYPPT" = "Clay Content",
+        "SLTPPT" = "Silt Content", "BDTICM" = "Soil Bulk Density",
+        "Lights2009" = "Night Lights", "Built2009" = "Built-up",
+        "Croplands2005" = "Croplands", "Pasture2009" = "Pasture"
     )
     clean_var_name <- function(v) {
         ifelse(v %in% names(var_dict), var_dict[v], v)
@@ -423,6 +438,6 @@ for (target_species in target_species_list) {
         )
 
     out_file <- file.path(fig_dir, sprintf("fig2_single_species_showcase_%s.png", target_species))
-    ggsave(out_file, fig2, width = 22, height = 7, dpi = 1600, bg = "white")
+    ggsave(out_file, fig2, width = 22, height = 7, dpi = 1200, bg = "white")
     cat(sprintf("✓ Saved %s\n", out_file))
 }

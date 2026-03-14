@@ -8,8 +8,8 @@
 #   (a) 全物种多模型 AUC 点阵图 (Cleveland dot plot)
 #   (b) 模型排名分布 (stacked bar)
 #
-# 数据来源:
-#   output/case4_plant/all_results_v3.csv
+# 数据来源 (Plant 案例, 03_run_Plant_multi_species.R 输出):
+#   output/case4_plant/all_results_plant.csv
 #
 # 运行: setwd("E:/CausalSDMs")
 #       source("scripts/Plant/plot/fig4_performance_robustness.R")
@@ -89,7 +89,8 @@ save_fig <- function(plt, name, w, h) {
 # ══════════════════════════════════════════════════════════════════════════════
 # 读取数据
 # ══════════════════════════════════════════════════════════════════════════════
-d <- read.csv("output/case4_plant/all_results_v3.csv", stringsAsFactors = FALSE) %>%
+d <- read.csv("output/case4_plant/all_results_plant.csv", stringsAsFactors = FALSE) %>%
+    mutate(auc_mean = as.numeric(auc_mean)) %>%
     filter(!is.na(auc_mean), model %in% models_ordered) %>%
     mutate(model = factor(model, levels = models_ordered))
 

@@ -1,67 +1,39 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Fig 6: 空间 CATE 热力图 — 批量生成，单图单文件
+Fig 6: 空间 CATE 热力图 — Plant 欧洲案例，与 MaskSDM-MEE-main 一致
 
-采用 plotbook.ipynb 的渲染方案:
-  - cartopy 地图投影 (PlateCarree)
-  - scipy.interpolate.griddata 高分辨率插值 → 类 TIF 精度
-  - pcolormesh 栅格渲染 (像素级平滑)
-  - 中国省界 (china.shp) + 南海断续线 (dashline.shp)
-  - 南海小地图 inset
-  - 海岸线 / 河流 / 湖泊
-  - 经纬网格 + 坐标标注
-
-可配置参数 (脚本头部修改):
-  TARGET_SPECIES : 指定物种 (None = 全部)
-  TARGET_VARS    : 指定变量 (None = 全部已有 CATE 变量)
-  INTERP_RES     : 插值分辨率 (度, 越小越精细)
+研究范围: 欧洲 bbox 经度 -10~31°、纬度 36~56°（与 MaskSDM-MEE generate_map_data 一致）。
+绘制方式: 不做插值；用 Natural Earth 110m 国家面做陆地面 mask，只保留陆地上的 CATE 点，
+  散点绘制（GeoDataFrame + Point + gdf.plot），颜色不溢出海洋，边界由 shp 约束。
 
 输出: figures/case4_plant/plot/cate_maps/fig6_cate_{species}_{variable}.png/svg
-
-依赖: pip install cartopy geopandas scipy matplotlib numpy pandas xarray
-
+依赖: geopandas matplotlib numpy pandas shapely
 运行: cd E:/CausalSDMs && python scripts/Plant/plot/fig6_spatial_cate_maps.py
 """
 
 import os
-import sys
 import warnings
-
-# 先设置后端再 import pyplot，避免 GUI/DLL 问题
 import matplotlib
 matplotlib.use("Agg")
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import matplotlib.ticker as mticker
-from matplotlib.path import Path as MplPath
-from matplotlib.patches import PathPatch
-from scipy.interpolate import griddata
-
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
-import cartopy.io.shapereader as shpreader
+import matplotlib.colors as mcolors
 import geopandas as gpd
+from shapely.geometry import Point
 
 warnings.filterwarnings("ignore")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # ★ 可配置参数
 # ══════════════════════════════════════════════════════════════════════════════
-# 绘制一个物种用 ["物种名"]；多个用 ["A", "B"]；None = 全部
-TARGET_SPECIES = None       # 例: ["Alces_alces"] 或 ["Ovis_ammon", "Capra_sibirica"]
-TARGET_VARS    = None          # None = 全部已有 CATE 变量; 或 ["elevation", "bio19"]
-INTERP_RES     = 0.02       # 格点密度：越小点越多；0.06 约 6km，热图点更密
-# scipy.griddata 仅支持三种: "nearest"=最快 | "linear"=折中 | "cubic"=最慢最平滑
-INTERP_METHOD  = "nearest"
-MASK_BUFFER    = 0.0         # 裁剪时边界外扩(度)；不再外扩，通过 nearest 填充彻底消除白边，避免热图移除边界
-DPI            = 1200       # 输出分辨率
-
-# ★ 速度优化
-N_WORKERS      = 8         # 并行进程数，0 或 1=单进程，4/8 等=多进程加速
-FAST_PLOT      = True       # True=低分辨率海岸线、不画河流湖泊，出图更快
-DISPLAY_RES    = 0.05        # 若设为浮点(如 0.02)，绘图用此分辨率降采样，加快 pcolormesh
+TARGET_SPECIES = None
+TARGET_VARS    = None
+MARKER_SIZE    = 1.2    # 陆地点散点大小，与 MaskSDM-MEE predictions_maps 一致（约 1）
+DPI            = 1200
+N_WORKERS      = 8
+BACKGROUND_COLOR = "#EAEAEA"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 路径配置
@@ -69,12 +41,14 @@ DISPLAY_RES    = 0.05        # 若设为浮点(如 0.02)，绘图用此分辨率
 BASE_DIR = "E:/CausalSDMs"
 os.chdir(BASE_DIR)
 
-CATE_CSV    = "output/case4_plant/all_spatial_cate_v3.csv"
-ATE_CSV     = "output/case4_plant/all_ate_results_v3.csv"
-CHINA_SHP   = "plot-function-main/data/china.shp"      # plotbook 目录下的中国省界
-DASH_SHP    = "plot-function-main/data/dashline.shp"    # 南海断续线
+# Plant 案例输出 (03_run_Plant_multi_species.R)
+CATE_CSV    = "output/case4_plant/all_spatial_cate_plant.csv"
+ATE_CSV     = "output/case4_plant/all_ate_results_plant.csv"
 FIG_DIR     = "figures/case4_plant/plot/cate_maps"
 TBL_DIR     = "figures/case4_plant/tables"
+# 欧洲研究范围: 与 MaskSDM-MEE-main 完全一致
+EUROPE_EXTENT = [-10.0, 31.0, 36.0, 56.0]   # lon_min, lon_max, lat_min, lat_max
+WORLD_SHP   = "110m_cultural/ne_110m_admin_0_countries.shp"
 
 os.makedirs(FIG_DIR, exist_ok=True)
 os.makedirs(TBL_DIR, exist_ok=True)
@@ -84,16 +58,24 @@ os.makedirs(TBL_DIR, exist_ok=True)
 # ══════════════════════════════════════════════════════════════════════════════
 VAR_LABELS = {
     "aridityindexthornthwaite": "Aridity Index",
-    "bio02":                    "Diurnal Range (Bio02)",
-    "bio15":                    "Precip. Seasonality (Bio15)",
-    "bio19":                    "Precip. Coldest Qtr (Bio19)",
-    "elevation":                "Elevation",
-    "etccdi_cwd":               "Consecutive Wet Days",
-    "landcover_igbp":           "Land Cover (IGBP)",
-    "maxtempcoldest":           "Tmax Coldest Month",
-    "nontree":                  "Non-tree Vegetation",
-    "topowet":                  "Topographic Wetness",
-    "tri":                      "Terrain Ruggedness",
+    "bio02": "Diurnal Range", "bio_2": "Mean Diurnal Range",
+    "bio15": "Precip. Seasonality", "bio_15": "Precip. Seasonality",
+    "bio19": "Precip. Coldest Qtr", "bio_19": "Precip. Coldest Qtr",
+    "bio03": "Isothermality", "bio_3": "Isothermality",
+    "bio18": "Precip. Warmest Qtr", "bio_18": "Precip. Warmest Qtr",
+    "elevation": "Elevation", "Elevation": "Elevation",
+    "etccdi_cwd": "Consecutive Wet Days",
+    "landcover_igbp": "Land Cover (IGBP)",
+    "maxtempcoldest": "Tmax Coldest Month",
+    "nontree": "Non-tree Vegetation",
+    "topowet": "Topographic Wetness",
+    "tri": "Terrain Ruggedness",
+    "Slope": "Slope", "Aspect": "Aspect",
+    "ORCDRC": "Soil Organic C", "PHIHOX": "Soil pH",
+    "CECSOL": "Soil CEC", "CLYPPT": "Clay Content",
+    "SLTPPT": "Silt Content", "BDTICM": "Bulk Density",
+    "Lights2009": "Night Lights", "Built2009": "Built-up",
+    "Croplands2005": "Croplands", "Pasture2009": "Pasture",
 }
 
 def get_var_label(v):
@@ -103,343 +85,103 @@ def fmt_species(s):
     return s.replace("_", " ")
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 中国地图绘制工具 (参照 plotbook one_map_china / sub_china_map)
+# 欧洲 CATE 图：与 MaskSDM-MEE 一致 — 陆地面 mask + 散点，无插值
 # ══════════════════════════════════════════════════════════════════════════════
-# 仅中国区范围（收紧为大陆+南海，不包含蒙古/俄罗斯/印度等周边国家视野）
-CHINA_EXTENT = [73.5, 135, 18, 53.5]
-# 南海小地图范围
-SCS_EXTENT   = [104.5, 125, 0, 26]
+_world_gdf_cache = None
+_land_union_cache = None
 
-# 中国境内多边形 (用于裁剪 CATE 栅格)；缓存 key 含 MASK_BUFFER/INTERP_RES 以便参数变更后重算
-_china_geom_cache = None  # (buffer_used, geometry)
-# 省界/南海 shapefile 几何缓存，避免每张图重复读盘
-_boundary_cache = {}
+def _get_world():
+    """欧洲底图：本地 Natural Earth 110m 国家面 (110m_cultural)。"""
+    global _world_gdf_cache
+    if _world_gdf_cache is None:
+        path = os.path.abspath(os.path.join(BASE_DIR, WORLD_SHP))
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"World shapefile not found: {path}")
+        _world_gdf_cache = gpd.read_file(path)
+    return _world_gdf_cache
 
-def get_china_geometry():
+def _get_land_union():
+    """陆地面（国家面 union），用于只保留陆地上的 CATE 点，边界由 shp 约束。"""
+    global _land_union_cache
+    if _land_union_cache is None:
+        _land_union_cache = _get_world().unary_union
+    return _land_union_cache
+
+def _mask_to_land(lons, lats, cate_vals):
+    """只保留在陆地面内的点，与 MaskSDM-MEE generate_map_data 中 within(world.unary_union) 一致。向量化。"""
+    land = _get_land_union()
+    if land is None:
+        return lons, lats, cate_vals
+    pts = gpd.GeoSeries([Point(x, y) for x, y in zip(lons, lats)], crs="EPSG:4326")
+    keep = pts.within(land).values
+    return np.asarray(lons)[keep], np.asarray(lats)[keep], np.asarray(cate_vals)[keep]
+
+def render_cate_map_europe_masksdm_style(lons, lats, cate_vals, species_name, var_name, ate_coef):
     """
-    加载中国省界 shapefile 并合并为单一多边形，用于栅格裁剪。
-    外扩 = MASK_BUFFER + 半格(0.5*INTERP_RES)，使 pcolormesh 格心贴省界时仍被保留，消除边缘空白。
+    欧洲单张 CATE 图：底图 world + 仅陆地点散点（无插值），与 MaskSDM-MEE predictions_maps 一致。
+    颜色不溢出海洋，边界由 shp 约束。
     """
-    global _china_geom_cache
-    # 外扩量：用户设置的 MASK_BUFFER + 半格补偿（避免格心刚好在边界外导致白边）
-    effective_buffer = (MASK_BUFFER or 0) + 0.5 * INTERP_RES
-    if _china_geom_cache is not None:
-        buf_used, geom = _china_geom_cache
-        if buf_used == effective_buffer:
-            return geom
-    if not os.path.exists(CHINA_SHP):
-        return None
-    gdf = gpd.read_file(CHINA_SHP)
-    if gdf is None or len(gdf) == 0:
-        return None
-    union = gdf.unary_union
-    geom = union.buffer(effective_buffer, resolution=2) if effective_buffer else union
-    _china_geom_cache = (effective_buffer, geom)
-    return geom
+    xmin, xmax = EUROPE_EXTENT[0], EUROPE_EXTENT[1]
+    ymin, ymax = EUROPE_EXTENT[2], EUROPE_EXTENT[3]
 
-def get_boundary_geoms(shp_path):
-    """缓存 shapefile 几何列表，避免每张图重复读盘。返回 list 供 add_geometries 使用。"""
-    global _boundary_cache
-    if shp_path not in _boundary_cache:
-        if not os.path.exists(shp_path):
-            _boundary_cache[shp_path] = []
-        else:
-            reader = shpreader.Reader(shp_path)
-            _boundary_cache[shp_path] = list(reader.geometries())
-            reader.close()
-    return _boundary_cache[shp_path]
-
-def _points_inside_china(points_xy, china_geom):
-    """对 (N,2) 的 points_xy 做 point-in-polygon，返回 (N,) bool。"""
-    from shapely.geometry import MultiPolygon
-    if china_geom is None:
-        return np.ones(len(points_xy), dtype=bool)
-    if isinstance(china_geom, MultiPolygon):
-        polys = list(china_geom.geoms)
-    else:
-        polys = [china_geom]
-    inside = np.zeros(len(points_xy), dtype=bool)
-    for poly in polys:
-        if poly.is_empty or poly.exterior is None:
-            continue
-        path = MplPath(np.array(poly.exterior.xy).T)
-        inside |= path.contains_points(points_xy)
-    return inside
-
-def mask_grid_to_china(grid_lon_1d, grid_lat_1d, grid_values_2d, china_geom):
-    """
-    将栅格裁剪到中国境内：境外像元置为 NaN。
-    按 pcolormesh 的格元中心做 point-in-polygon，避免省界内侧出现白边。
-    """
-    if china_geom is None:
-        return grid_values_2d
-    try:
-        nlat, nlon = grid_values_2d.shape
-        # 格元中心（与 pcolormesh 的 cell 一一对应）
-        center_lon = (grid_lon_1d[:-1] + grid_lon_1d[1:]) * 0.5
-        center_lat = (grid_lat_1d[:-1] + grid_lat_1d[1:]) * 0.5
-        lon_c, lat_c = np.meshgrid(center_lon, center_lat)
-        points = np.column_stack([lon_c.ravel(), lat_c.ravel()])
-        inside_c = _points_inside_china(points, china_geom).reshape(nlat - 1, nlon - 1)
-        # 扩成 (nlat, nlon)，与 grid_values_2d 对齐：最后一列/行沿用前一格
-        mask = np.zeros((nlat, nlon), dtype=bool)
-        mask[: nlat - 1, : nlon - 1] = inside_c
-        mask[nlat - 1, :] = mask[nlat - 2, :]
-        mask[:, nlon - 1] = mask[:, nlon - 2]
-        out = np.array(grid_values_2d, dtype=float, copy=True)
-        out[~mask] = np.nan
-        return out
-    except Exception:
-        return grid_values_2d
-
-def build_china_mask(grid_lon_1d, grid_lat_1d, china_geom):
-    """
-    一次性计算栅格在中国境内的布尔 mask（True=境内）。
-    按 pcolormesh 的格元中心判断，与 mask_grid_to_china 一致，消除边缘空白。
-    """
-    nlat, nlon = len(grid_lat_1d), len(grid_lon_1d)
-    if china_geom is None:
-        return np.ones((nlat, nlon), dtype=bool)
-    try:
-        center_lon = (grid_lon_1d[:-1] + grid_lon_1d[1:]) * 0.5
-        center_lat = (grid_lat_1d[:-1] + grid_lat_1d[1:]) * 0.5
-        lon_c, lat_c = np.meshgrid(center_lon, center_lat)
-        points = np.column_stack([lon_c.ravel(), lat_c.ravel()])
-        inside_c = _points_inside_china(points, china_geom).reshape(nlat - 1, nlon - 1)
-        mask = np.zeros((nlat, nlon), dtype=bool)
-        mask[: nlat - 1, : nlon - 1] = inside_c
-        mask[nlat - 1, :] = mask[nlat - 2, :]
-        mask[:, nlon - 1] = mask[:, nlon - 2]
-        return mask
-    except Exception:
-        return np.ones((nlat, nlon), dtype=bool)
-
-def add_china_boundary(ax, shp_path, **kwargs):
-    """叠加中国省界 shapefile（未缓存时读盘）"""
-    if not os.path.exists(shp_path):
-        return
-    proj = ccrs.PlateCarree()
-    reader = shpreader.Reader(shp_path)
-    geometries = reader.geometries()
-    ax.add_geometries(geometries, proj, **kwargs)
-    reader.close()
-
-def add_china_boundary_cached(ax, geoms, **kwargs):
-    """叠加省界/南海，使用已缓存的几何列表，避免重复读盘"""
-    if not geoms:
-        return
-    ax.add_geometries(geoms, ccrs.PlateCarree(), **kwargs)
-
-def setup_china_axes(ax, add_rivers=True, add_lakes=True,
-                     add_coastlines=True, add_gridlines=True,
-                     geoms_china=None, geoms_dash=None, fast_plot=False):
-    """
-    配置中国主图：仅中国区范围 + 省界 + 南海断续线；保留河流、湖泊；不画全球海岸线（避免周边国家轮廓）。
-    无经纬度、无边框、无网格线。
-    """
-    ax.set_extent(CHINA_EXTENT, crs=ccrs.PlateCarree())
-
-    # 不画全球海岸线，仅用省界+南海断续线勾勒中国，实现“仅保留中国区”
-    if add_coastlines:
-        res = "110m" if fast_plot else "50m"
-        try:
-            ax.coastlines(resolution=res, color="0.3", linewidth=0.6, zorder=3)
-        except Exception:
-            ax.coastlines(color="0.3", linewidth=0.6, zorder=3)
-
-    if not fast_plot:
-        if add_rivers:
-            ax.add_feature(cfeature.RIVERS, linewidth=0.3, edgecolor="steelblue", zorder=2)
-        if add_lakes:
-            ax.add_feature(cfeature.LAKES, facecolor="lightblue",
-                           edgecolor="steelblue", linewidth=0.2, zorder=2)
-
-    # 中国省界、南海断续线（优先用缓存）
-    if geoms_china is not None:
-        add_china_boundary_cached(ax, geoms_china, ec="black", fc="none", linewidth=0.6)
-    else:
-        add_china_boundary(ax, CHINA_SHP, ec="black", fc="none", linewidth=0.6)
-    if geoms_dash is not None:
-        add_china_boundary_cached(ax, geoms_dash, ec="black", fc="none", linewidth=0.8)
-    else:
-        add_china_boundary(ax, DASH_SHP, ec="black", fc="none", linewidth=0.8)
-
-    # 除中国区外不绘制：主图背景透明（境外区域透明）
-    ax.patch.set_facecolor("none")
-    ax.patch.set_edgecolor("white")
-    ax.patch.set_linewidth(0)
-    # 去掉经纬度、网格线、地图黑框
-    ax.set_frame_on(False)
-    for spine in ax.spines.values():
-        spine.set_visible(False)
-    _outline = getattr(ax, "outline_patch", None)
-    if _outline is not None:
-        _outline.set_visible(False)
-        _outline.set_edgecolor("none")
-    _bg = getattr(ax, "background_patch", None)
-    if _bg is not None:
-        _bg.set_visible(False)
-
-
-def add_scs_inset(fig, ax_main, data_lons, data_lats, data_vals, levels, cmap, norm,
-                  geoms_china=None, geoms_dash=None):
-    """在主图右下角添加南海小地图 inset，带黑框，位置适当下移。"""
-    pos = ax_main.get_position()
-    inset_w = pos.width * 0.28
-    inset_h = pos.height * 0.35
-    inset_x = pos.x1 - inset_w
-    # 适当下移：相对主图底部再向下偏移一截
-    inset_y = pos.y0 - 0.04
-
-    ax_inset = fig.add_axes(
-        [inset_x, inset_y, inset_w, inset_h],
-        projection=ccrs.PlateCarree()
+    # 只保留陆地上的点，不做任何插值
+    lons_land, lats_land, cate_land = _mask_to_land(
+        np.asarray(lons, dtype=float),
+        np.asarray(lats, dtype=float),
+        np.asarray(cate_vals, dtype=float),
     )
-    ax_inset.set_extent(SCS_EXTENT, crs=ccrs.PlateCarree())
+    if len(cate_land) < 10:
+        return None
 
-    if data_vals is not None and len(data_vals) > 0:
-        ax_inset.pcolormesh(
-            data_lons, data_lats, data_vals,
-            transform=ccrs.PlateCarree(),
-            cmap=cmap, norm=norm,
-            shading="auto", rasterized=True
-        )
-
-    ax_inset.coastlines(color="0.3", linewidth=0.4)
-    if geoms_china is not None:
-        add_china_boundary_cached(ax_inset, geoms_china, ec="black", fc="none", linewidth=0.5)
-    else:
-        add_china_boundary(ax_inset, CHINA_SHP, ec="black", fc="none", linewidth=0.5)
-    if geoms_dash is not None:
-        add_china_boundary_cached(ax_inset, geoms_dash, ec="black", fc="none", linewidth=0.6)
-    else:
-        add_china_boundary(ax_inset, DASH_SHP, ec="black", fc="none", linewidth=0.6)
-
-    # 南海小图保留黑色矩形边框
-    ax_inset.set_frame_on(True)
-    ax_inset.patch.set_edgecolor("black")
-    ax_inset.patch.set_linewidth(1)
-    ax_inset.patch.set_facecolor("white")
-
-    return ax_inset
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# 核心渲染函数: 将散点 CATE 插值为高精度栅格, 以 pcolormesh 渲染
-# ══════════════════════════════════════════════════════════════════════════════
-def render_cate_map(lons, lats, cate_vals, species_name, var_name, ate_coef,
-                    grid_lon=None, grid_lat=None, china_mask=None,
-                    geoms_china=None, geoms_dash=None, display_res=None):
-    """
-    单张 CATE 热力图。可选传入预计算的 grid_lon, grid_lat, china_mask 与边界几何以加速。
-    display_res: 若设置，绘图时降采样到此分辨率以加快 pcolormesh。
-    """
-    lon_min, lon_max = CHINA_EXTENT[0], CHINA_EXTENT[1]
-    lat_min, lat_max = CHINA_EXTENT[2], CHINA_EXTENT[3]
-    use_precomputed = grid_lon is not None and grid_lat is not None and china_mask is not None
-
-    if use_precomputed:
-        grid_lon_2d, grid_lat_2d = np.meshgrid(grid_lon, grid_lat)
-    else:
-        grid_lon = np.arange(lon_min, lon_max + INTERP_RES * 0.5, INTERP_RES)
-        grid_lat = np.arange(lat_min, lat_max + INTERP_RES * 0.5, INTERP_RES)
-        grid_lon_2d, grid_lat_2d = np.meshgrid(grid_lon, grid_lat)
-
-    # ── scipy.griddata 插值 ──────────────────────────────────────────────────
-    points = np.column_stack([lons, lats])
-    grid_cate = griddata(points, cate_vals, (grid_lon_2d, grid_lat_2d),
-                         method=INTERP_METHOD)
-                         
-    # ★ 核心修复：用 nearest 填充 linear 不能覆盖的边界地带 (Convex Hull之外的数据)
-    grid_cate_nearest = griddata(points, cate_vals, (grid_lon_2d, grid_lat_2d), method='nearest')
-    grid_cate = np.where(np.isnan(grid_cate), grid_cate_nearest, grid_cate)
-
-    # ── 裁剪到中国境内 ───────────────────────────────────────────────────────
-    if use_precomputed:
-        out = np.array(grid_cate, dtype=float, copy=True)
-        out[~china_mask] = np.nan
-        grid_cate = out
-    else:
-        china_geom = get_china_geometry()
-        grid_cate = mask_grid_to_china(grid_lon, grid_lat, grid_cate, china_geom)
-
-    # ── 对称发散色标 (以 0 为中心，仅用境内有效值) ─────────────────────────────
-    valid = grid_cate[~np.isnan(grid_cate)]
+    valid = cate_land[~np.isnan(cate_land)]
     if len(valid) == 0:
         return None
     cate_lim = np.percentile(np.abs(valid), 98)
     if cate_lim < 1e-8:
         cate_lim = np.max(np.abs(valid)) + 1e-6
+    norm = mcolors.TwoSlopeNorm(vmin=-cate_lim, vcenter=0, vmax=cate_lim)
+    cmap = plt.cm.RdBu_r
 
-    # 可选：绘图降采样，减少 pcolormesh 像元数以加速
-    plot_lon, plot_lat, plot_cate = grid_lon, grid_lat, grid_cate
-    if display_res is not None and display_res > INTERP_RES:
-        step = max(1, int(round(display_res / INTERP_RES)))
-        plot_lon = grid_lon[::step]
-        plot_lat = grid_lat[::step]
-        plot_cate = grid_cate[::step, ::step]
-
-    # Nature 风格发散配色: 蓝-白-红；境外（NaN）设为透明
-    cmap = plt.cm.RdBu_r.copy()
-    cmap.set_bad("none")
-    norm = matplotlib.colors.TwoSlopeNorm(vmin=-cate_lim, vcenter=0, vmax=cate_lim)
-
-    # ── 创建画布（除中国区外透明背景）────────────────────────────────────────
-    fig = plt.figure(figsize=(10, 8), facecolor="none")
-    fig.patch.set_edgecolor("none")
-    fig.patch.set_linewidth(0)
-    ax = fig.add_subplot(111, projection=ccrs.PlateCarree())
-
-    # ── pcolormesh 渲染：仅中国区有颜色，境外透明 ─────────────────────────────
-    mesh = ax.pcolormesh(
-        plot_lon, plot_lat, plot_cate,
-        transform=ccrs.PlateCarree(),
-        cmap=cmap, norm=norm,
-        shading="auto",
-        rasterized=True,
-        zorder=1,
+    fig, ax = plt.subplots(1, 1, figsize=(10, 8), facecolor="white")
+    world = _get_world()
+    world.plot(ax=ax, color=BACKGROUND_COLOR, edgecolor="none", zorder=0)
+    # 散点绘制陆地点，与 MaskSDM-MEE 一致：GeoDataFrame + Point + gdf.plot(column=..., markersize=...)
+    gdf = gpd.GeoDataFrame(
+        {"cate": cate_land},
+        geometry=[Point(lon, lat) for lon, lat in zip(lons_land, lats_land)],
+        crs="EPSG:4326",
     )
+    gdf.plot(ax=ax, column="cate", cmap=cmap, norm=norm, markersize=MARKER_SIZE, legend=False, zorder=1)
+    world.plot(ax=ax, facecolor="none", edgecolor="0.35", linewidth=0.4, zorder=2)
+    ax.set_xlim((xmin, xmax))
+    ax.set_ylim((ymin, ymax))
+    ax.set_aspect("equal")
+    ax.grid(False)
+    ax.set_xticks([])
+    ax.set_yticks([])
 
-    # ── 叠加地理要素：仅中国区省界+南海断续线，不绘制境外（无海岸线/河流/湖泊），主图背景透明 ──
-    setup_china_axes(ax,
-                     add_coastlines=False, add_rivers=False, add_lakes=False, add_gridlines=False,
-                     geoms_china=geoms_china, geoms_dash=geoms_dash, fast_plot=FAST_PLOT)
-
-    # ── colorbar ─────────────────────────────────────────────────────────────
-    cbar = fig.colorbar(
-        mesh, ax=ax, orientation="horizontal",
-        fraction=0.046, pad=0.08, shrink=0.7,
-        extend="both",
-    )
-    cbar.set_label("CATE (Conditional Average Treatment Effect)",
-                   fontsize=9, labelpad=4, fontfamily="sans-serif")
+    # 为散点图添加 colorbar（用 mappable 从 norm 构造）
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar_ax = fig.add_axes([0.25, 0.08, 0.5, 0.02])
+    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
+    cbar.set_label("CATE (Conditional Average Treatment Effect)", fontsize=9, fontfamily="sans-serif")
     cbar.ax.tick_params(labelsize=8)
 
-    # ── 标题（先设好，避免与 colorbar/小地图重叠）────────────────────────────
     var_display = get_var_label(var_name)
-    sp_display  = fmt_species(species_name)
-    ax.set_title(
-        f"Spatial CATE: {var_display}",
-        fontsize=14, fontweight="bold", pad=10, fontfamily="sans-serif"
-    )
-    subtitle = (f"{sp_display}  |  ATE = {ate_coef:.4f}  |  "
-                f"n = {len(lons):,} grid cells  |  "
-                f"Interp. {INTERP_RES}°")
-    # 副标题置于主标题上方，留出间距避免与主标题重叠
-    ax.text(
-        0.5, 1.03, subtitle,
-        transform=ax.transAxes, ha="center", va="bottom",
-        fontsize=9, color="grey", fontstyle="italic",
-        fontfamily="sans-serif"
-    )
-
-    # 先收紧边距，再按最终主图位置放置小地图，避免小地图错位；top 留足给标题
-    plt.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.14)
-    fig.canvas.draw()
-    # 南海小地图：必须在 subplots_adjust 之后添加，位置才贴合主图右下角
-    add_scs_inset(fig, ax, plot_lon, plot_lat, plot_cate, None, cmap, norm,
-                  geoms_china=geoms_china, geoms_dash=geoms_dash)
+    sp_display = fmt_species(species_name)
+    ax.set_title(f"Spatial CATE: {var_display}", fontsize=14, fontweight="bold", pad=10, fontfamily="sans-serif")
+    fig.text(0.5, 0.96, f"{sp_display}  |  ATE = {ate_coef:.4f}  |  n = {len(lons_land):,} land points (no interpolation)",
+             ha="center", va="bottom", fontsize=9, color="grey", style="italic", fontfamily="sans-serif")
+    plt.subplots_adjust(left=0.02, right=0.98, top=0.90, bottom=0.14)
     return fig
+
+
+def render_cate_map(lons, lats, cate_vals, species_name, var_name, ate_coef):
+    """Plant 欧洲案例：陆地面 mask + 散点绘制，无插值（与 MaskSDM-MEE 一致）。"""
+    return render_cate_map_europe_masksdm_style(
+        lons, lats, cate_vals, species_name, var_name, ate_coef,
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -482,18 +224,8 @@ def main():
     # 保存任务清单
     combos.to_csv(os.path.join(TBL_DIR, "fig6_cate_plot_tasks.csv"), index=False)
 
-    # ── 预计算：网格 + 中国 mask + 省界几何（全任务共用，显著加速）────────────
-    print("预计算网格与边界（一次性）...")
-    lon_min, lon_max = CHINA_EXTENT[0], CHINA_EXTENT[1]
-    lat_min, lat_max = CHINA_EXTENT[2], CHINA_EXTENT[3]
-    grid_lon = np.arange(lon_min, lon_max + INTERP_RES * 0.5, INTERP_RES)
-    grid_lat = np.arange(lat_min, lat_max + INTERP_RES * 0.5, INTERP_RES)
-    china_geom = get_china_geometry()
-    china_mask = build_china_mask(grid_lon, grid_lat, china_geom)
-    geoms_china = get_boundary_geoms(CHINA_SHP)
-    geoms_dash = get_boundary_geoms(DASH_SHP)
-    print(f"  网格: {len(grid_lon)} x {len(grid_lat)}, 境内像元: {np.sum(china_mask):,}\n")
-
+    # ── 欧洲范围（无插值、无预计算网格）────────────────────────────────────
+    print(f"  范围: {EUROPE_EXTENT} (陆地点散点，无插值)\n")
     fig_dir_abs = os.path.abspath(FIG_DIR)
     n_workers = max(0, int(N_WORKERS))
 
@@ -514,12 +246,9 @@ def main():
                 fig = render_cate_map(
                     sub["lon"].values, sub["lat"].values, sub["cate"].values,
                     sp, var, ate,
-                    grid_lon=grid_lon, grid_lat=grid_lat, china_mask=china_mask,
-                    geoms_china=geoms_china, geoms_dash=geoms_dash,
-                    display_res=DISPLAY_RES,
                 )
                 if fig is None:
-                    print("  ⚠ 插值后无有效数据, 跳过")
+                    print("  ⚠ 陆地点不足或无有效数据, 跳过")
                     continue
                 fname = f"fig6_cate_{sp}_{var}"
                 fig.savefig(
@@ -551,8 +280,6 @@ def main():
             task_args.append((
                 sp, var, ate,
                 sub["lon"].values.copy(), sub["lat"].values.copy(), sub["cate"].values.copy(),
-                grid_lon, grid_lat, china_mask,
-                geoms_china, geoms_dash,
                 fig_dir_abs, DPI,
             ))
         print(f"  使用 {n_workers} 个进程并行渲染 {len(task_args)} 张图...\n")
@@ -573,19 +300,13 @@ def main():
 
 def _render_one_task(args):
     """
-    单张图渲染任务，供多进程调用。args: (sp, var, ate, lons, lats, cate_vals,
-    grid_lon, grid_lat, china_mask, geoms_china, geoms_dash, fig_dir, dpi).
+    单张图渲染任务，供多进程调用。
+    args: (sp, var, ate, lons, lats, cate_vals, fig_dir, dpi).
     返回 (success, sp, var, err_msg or None)。
     """
-    (sp, var, ate, lons, lats, cate_vals, grid_lon, grid_lat, china_mask,
-     geoms_china, geoms_dash, fig_dir, dpi) = args
+    (sp, var, ate, lons, lats, cate_vals, fig_dir, dpi) = args
     try:
-        fig = render_cate_map(
-            lons, lats, cate_vals, sp, var, ate,
-            grid_lon=grid_lon, grid_lat=grid_lat, china_mask=china_mask,
-            geoms_china=geoms_china, geoms_dash=geoms_dash,
-            display_res=DISPLAY_RES,
-        )
+        fig = render_cate_map(lons, lats, cate_vals, sp, var, ate)
         if fig is None:
             return (False, sp, var, "无有效数据")
         fname = f"fig6_cate_{sp}_{var}"

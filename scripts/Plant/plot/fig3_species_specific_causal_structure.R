@@ -10,11 +10,11 @@
 #   (c) 因果角色热力图: 同一变量在不同物种中扮演不同因果角色
 #   (d) 自适应筛选得分热力图: 不同物种对变量重视程度不同
 #
-# 数据来源:
-#   output/case4_plant/all_dag_edges_v3.csv
-#   output/case4_plant/all_ate_results_v3.csv
-#   output/case4_plant/all_role_info_v3.csv
-#   output/case4_plant/all_screening_v3.csv
+# 数据来源 (Plant 案例, 03_run_Plant_multi_species.R 输出):
+#   output/case4_plant/all_dag_edges_plant.csv
+#   output/case4_plant/all_ate_results_plant.csv
+#   output/case4_plant/all_role_info_plant.csv
+#   output/case4_plant/all_screening_plant.csv
 #
 # 运行: setwd("E:/CausalSDMs")
 #       source("scripts/Plant/plot/fig3_species_specific_causal_structure.R")
@@ -52,20 +52,28 @@ theme_pub <- function(base_size = 10) {
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 变量 → 英文显示名称映射
+# 变量 → 英文显示名称映射 (含 Plant 案例变量)
 # ══════════════════════════════════════════════════════════════════════════════
 var_labels <- c(
     "aridityindexthornthwaite" = "Aridity Index",
-    "bio02"                    = "Diurnal Range (Bio02)",
-    "bio15"                    = "Precip. Seasonality (Bio15)",
-    "bio19"                    = "Precip. Coldest Qtr (Bio19)",
-    "elevation"                = "Elevation",
-    "etccdi_cwd"               = "Consecutive Wet Days",
-    "landcover_igbp"           = "Land Cover (IGBP)",
-    "maxtempcoldest"           = "Tmax Coldest Month",
-    "nontree"                  = "Non-tree Vegetation",
-    "topowet"                  = "Topographic Wetness",
-    "tri"                      = "Terrain Ruggedness"
+    "bio02" = "Diurnal Range", "bio_2" = "Mean Diurnal Range",
+    "bio15" = "Precip. Seasonality", "bio_15" = "Precip. Seasonality",
+    "bio19" = "Precip. Coldest Qtr", "bio_19" = "Precip. Coldest Qtr",
+    "bio03" = "Isothermality", "bio_3" = "Isothermality",
+    "bio18" = "Precip. Warmest Qtr", "bio_18" = "Precip. Warmest Qtr",
+    "elevation" = "Elevation", "Elevation" = "Elevation",
+    "etccdi_cwd" = "Consecutive Wet Days",
+    "landcover_igbp" = "Land Cover (IGBP)",
+    "maxtempcoldest" = "Tmax Coldest Month",
+    "nontree" = "Non-tree Vegetation",
+    "topowet" = "Topographic Wetness",
+    "tri" = "Terrain Ruggedness",
+    "Slope" = "Slope", "Aspect" = "Aspect",
+    "ORCDRC" = "Soil Organic C", "PHIHOX" = "Soil pH",
+    "CECSOL" = "Soil CEC", "CLYPPT" = "Clay Content",
+    "SLTPPT" = "Silt Content", "BDTICM" = "Bulk Density",
+    "Lights2009" = "Night Lights", "Built2009" = "Built-up",
+    "Croplands2005" = "Croplands", "Pasture2009" = "Pasture"
 )
 
 # 获取显示名称（缺失则原样返回）
@@ -98,10 +106,11 @@ save_fig <- function(plt, name, w, h) {
 # ══════════════════════════════════════════════════════════════════════════════
 # 读取数据
 # ══════════════════════════════════════════════════════════════════════════════
-edges <- read.csv("output/case4_plant/all_dag_edges_v3.csv", stringsAsFactors = FALSE)
-ate   <- read.csv("output/case4_plant/all_ate_results_v3.csv", stringsAsFactors = FALSE)
-roles <- read.csv("output/case4_plant/all_role_info_v3.csv", stringsAsFactors = FALSE)
-scr   <- read.csv("output/case4_plant/all_screening_v3.csv", stringsAsFactors = FALSE)
+edges <- read.csv("output/case4_plant/all_dag_edges_plant.csv", stringsAsFactors = FALSE)
+ate   <- read.csv("output/case4_plant/all_ate_results_plant.csv", stringsAsFactors = FALSE) %>%
+    mutate(coef = as.numeric(coef), p_value = as.numeric(p_value))
+roles <- read.csv("output/case4_plant/all_role_info_plant.csv", stringsAsFactors = FALSE)
+scr   <- read.csv("output/case4_plant/all_screening_plant.csv", stringsAsFactors = FALSE)
 
 all_species <- sort(unique(ate$species))
 all_vars    <- sort(unique(ate$variable))
