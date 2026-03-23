@@ -67,7 +67,7 @@ MODELS = ["CAST", "MLP_ATE", "MLP", "RF", "Maxent", "BRT"]
 META_COLS = {"HID", "lon", "lat", "species", "sid", "family", "category",
              "presence", "fraction"}
 
-FIG_DPI       = 300
+FIG_DPI       = 2400
 CHINA_EXTENT  = [73.5, 135, 18, 53.5]
 INTERP_RES    = 0.06
 INTERP_METHOD = "nearest"
@@ -589,6 +589,177 @@ def plot_consistency_heatmaps(species_name, metrics_df, model_list, out_path):
 
 
 # ==============================================================================
+# ■ COMPONENT D: Prediction + MESS Credibility Zone Overlay
+# ==============================================================================
+def make_zone_cmap():
+    """3-zone: red (extrapolation) → amber (buffer) → green (reliable)"""
+    colors = ["#d62728", "#ff7f0e", "#2ca02c"]
+    return LinearSegmentedColormap.from_list("zone", colors, N=3)
+
+
+def plot_credibility_map(species_name, pred_df, mess_vals, env_grid_df,
+                        train_df, out_path):
+    """
+    Generate CAST prediction heatmap with MESS credibility zone overlay.
+
+    Three zones:
+      Zone 1 (green):  Within known distribution range
+      Zone 2 (amber):  Buffer/adjacent area, MESS ≥ 0 (environmental interpolation)
+      Zone 3 (red):    MESS < 0 (environmental extrapolation — lower confidence)
+    """
+    lon = pred_df["lon"].values
+    lat = pred_df["lat"].values
+    hss_cast = pred_df["HSS_CAST"].values if "HSS_CAST" in pred_df.columns \
+               else pred_df["HSS_MLP"].values
+
+    # ── Identify known presence range ──
+    if train_df is not None and "presence" in train_df.columns:
+        pres = train_df[train_df["presence"] == 1]
+        pres_lons = pres["lon"].values
+        pres_lats = pres["lat"].values
+    else:
+        pres_lons = np.array([])
+        pres_lats = np.array([])
+
+    # ── Build zone classification for each grid cell ──
+    # Zone values: 1=known range, 2=buffer(MESS≥0), 3=extrapolation(MESS<0)
+    # Use env_grid coordinates (same order as mess_vals)
+    grid_lons_env = env_grid_df["lon"].values
+    grid_lats_env = env_grid_df["lat"].values
+
+    # Classify each grid cell
+    zone_vals = np.full(len(mess_vals), 3.0)  # default: extrapolation
+    zone_vals[mess_vals >= 0] = 2.0            # interpolation (buffer)
+
+    # Mark cells within known presence range (convex hull buffer)
+    if len(pres_lons) >= 3:
+        from scipy.spatial import ConvexHull
+        try:
+            pts_pres = np.column_stack([pres_lons, pres_lats])
+            hull = ConvexHull(pts_pres)
+            hull_path = MplPath(pts_pres[hull.vertices])
+            grid_pts = np.column_stack([grid_lons_env, grid_lats_env])
+            # Zone 1: within convex hull of presence points (with ~50km buffer ≈ 0.5°)
+            from shapely.geometry import Polygon as ShapelyPolygon
+            hull_poly = ShapelyPolygon(pts_pres[hull.vertices])
+            hull_buffered = hull_poly.buffer(0.5)  # ~50km at mid-latitudes
+            hull_path_buf = MplPath(
+                np.array(hull_buffered.exterior.xy).T
+            )
+            in_range = hull_path_buf.contains_points(grid_pts)
+            zone_vals[in_range & (mess_vals >= 0)] = 1.0
+        except Exception:
+            pass
+
+    # ── Create figure: 1×2 (HSS + HSS with zones) ──
+    fig = plt.figure(figsize=(17, 7.5), facecolor="white")
+    fig.suptitle(
+        f"Prediction Credibility Zones — {format_species_name(species_name)}",
+        fontsize=14, fontweight="bold", color="black", y=0.97,
+    )
+    gs = GridSpec(1, 2, figure=fig, wspace=0.10,
+                  top=0.90, bottom=0.10, left=0.03, right=0.97)
+
+    # ── Panel 1: CAST HSS prediction (clean, like fig7) ──
+    ax0 = fig.add_subplot(gs[0, 0], projection=ccrs.PlateCarree())
+    vmax = max(np.nanmax(hss_cast), 1.0)
+    plot_interpolated_map(ax0, lon, lat, hss_cast, HSS_CMAP, 0, vmax,
+                          title="(a) CAST Prediction (HSS)",
+                          cbar_label="Habitat Suitability Score")
+
+    # ── Panel 2: HSS + MESS credibility contour overlay ──
+    ax1 = fig.add_subplot(gs[0, 1], projection=ccrs.PlateCarree())
+
+    # Base layer: HSS heatmap (same as panel 1)
+    hss_grid = compute_one_grid(lon, lat, hss_cast, china_mask)
+    if hss_grid is None:
+        hss_grid = np.full((len(grid_lat), len(grid_lon)), np.nan)
+    plot_hss = hss_grid[::step, ::step] if step > 1 else hss_grid
+    hss_cmap = HSS_CMAP.copy()
+    hss_cmap.set_bad("none")
+    norm_hss = mcolors.Normalize(vmin=0, vmax=vmax)
+    ax1.pcolormesh(plot_lon, plot_lat, plot_hss,
+                   transform=ccrs.PlateCarree(),
+                   cmap=hss_cmap, norm=norm_hss,
+                   shading="auto", rasterized=True, zorder=1)
+
+    # Overlay: MESS=0 contour line (interpolation/extrapolation boundary)
+    mess_grid = compute_one_grid(grid_lons_env, grid_lats_env, mess_vals, china_mask)
+    if mess_grid is not None:
+        plot_mess = mess_grid[::step, ::step] if step > 1 else mess_grid
+        lon2d, lat2d = np.meshgrid(plot_lon, plot_lat)
+        # MESS = 0 contour (thick red line = extrapolation boundary)
+        c0 = ax1.contour(lon2d, lat2d, plot_mess,
+                         levels=[0], colors=["#d62728"],
+                         linewidths=[1.8], linestyles=["solid"],
+                         transform=ccrs.PlateCarree(), zorder=4)
+        ax1.clabel(c0, fmt="MESS=0", fontsize=6, colors=["#d62728"])
+
+    # Overlay: Zone 1 boundary (known range convex hull)
+    if len(pres_lons) >= 3:
+        try:
+            hull_poly_plot = ShapelyPolygon(pts_pres[hull.vertices])
+            hull_buf_plot = hull_poly_plot.buffer(0.5)
+            from matplotlib.patches import Polygon as MplPolygon
+            from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
+            polys = [hull_buf_plot] if not isinstance(hull_buf_plot, ShapelyMultiPolygon) \
+                    else list(hull_buf_plot.geoms)
+            for poly in polys:
+                coords = np.array(poly.exterior.xy).T
+                ax1.plot(coords[:, 0], coords[:, 1],
+                         color="#2ca02c", linewidth=1.5, linestyle="--",
+                         transform=ccrs.PlateCarree(), zorder=5,
+                         label="Known range (~50km buffer)")
+        except Exception:
+            pass
+
+    setup_china_axes_subplot(ax1, geoms_china, geoms_dash)
+    ax1.set_title("(b) HSS + Credibility Zones", fontsize=10,
+                  fontweight="bold", color="black", pad=4,
+                  path_effects=[pe.withStroke(linewidth=2, foreground="white")])
+
+    # HSS colorbar
+    cax1 = ax1.inset_axes([0.05, -0.06, 0.9, 0.04])
+    sm = plt.cm.ScalarMappable(cmap=hss_cmap, norm=norm_hss)
+    cbar1 = plt.colorbar(sm, cax=cax1, orientation="horizontal")
+    cbar1.set_label("HSS", fontsize=7, labelpad=1)
+    cbar1.ax.tick_params(labelsize=6, pad=1)
+    cbar1.outline.set_edgecolor("black")
+    cbar1.outline.set_linewidth(0.5)
+
+    # Legend for contour lines
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color="#2ca02c", lw=1.5, ls="--",
+               label="Zone 1: Known range (high confidence)"),
+        Line2D([0], [0], color="#d62728", lw=1.8, ls="-",
+               label="MESS=0: Interpolation/Extrapolation boundary"),
+    ]
+    ax1.legend(handles=legend_elements, loc="lower left",
+              fontsize=7, framealpha=0.9, edgecolor="gray",
+              fancybox=True, bbox_to_anchor=(0.01, 0.01))
+
+    # Stats annotation
+    n_total = len(zone_vals)
+    n_z1 = int(np.sum(zone_vals == 1))
+    n_z2 = int(np.sum(zone_vals == 2))
+    n_z3 = int(np.sum(zone_vals == 3))
+    stats_text = (
+        f"Zone 1 (known range): {n_z1:,} ({n_z1/n_total*100:.1f}%)\n"
+        f"Zone 2 (interpolation): {n_z2:,} ({n_z2/n_total*100:.1f}%)\n"
+        f"Zone 3 (extrapolation): {n_z3:,} ({n_z3/n_total*100:.1f}%)"
+    )
+    fig.text(0.50, 0.02, stats_text, ha="center", va="bottom",
+             fontsize=8, color="black", fontfamily="monospace",
+             bbox=dict(boxstyle="round,pad=0.4", facecolor="lightyellow",
+                       edgecolor="gray", alpha=0.9))
+
+    fig.savefig(out_path, dpi=FIG_DPI, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    print(f"    ✓ Credibility: {os.path.basename(out_path)}")
+
+
+# ==============================================================================
 # ■ MAIN
 # ==============================================================================
 def main():
@@ -680,8 +851,17 @@ def main():
                 "mess_median": float(np.nanmedian(mess_vals)),
                 "mess_mean": float(np.nanmean(mess_vals)),
             })
+            # ──────────────────────────────────────────────────────────
+            # D. Credibility Zone Map (HSS + MESS overlay)
+            # ──────────────────────────────────────────────────────────
+            print("    [D] Generating credibility zone map...")
+            plot_credibility_map(
+                sp, pred_df, mess_vals, env_grid, train_df,
+                os.path.join(OUT_DIR, f"fig8_credibility_{sp}.png"),
+            )
         else:
             print("    [B] Skipped MESS (no training data)")
+            mess_vals = None
 
         # ──────────────────────────────────────────────────────────
         # C. Inter-model Consistency
