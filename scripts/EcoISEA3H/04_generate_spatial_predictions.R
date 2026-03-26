@@ -11,6 +11,9 @@
 #   pred_{species}.csv with columns:
 #     HID, lon, lat, presence (if known), HSS_CAST, HSS_MLP_ATE, HSS_MLP,
 #     HSS_RF, HSS_Maxent, HSS_BRT
+#   Optional (RUN_CAST_ENV_SENSITIVITY = TRUE):
+#     SENS_CAST_dHSS_max — 各环境变量逐一 +eps_z 扰动后 |ΔHSS| 的最大值（像元级）
+#     SENS_CAST_argmax_var — 达到该最大扰动的变量名（OAT）
 #
 # Combined output:
 #   all_spatial_predictions.csv — long format for all species × models
@@ -48,6 +51,16 @@ cat(sprintf("  Computing device: %s\n", as.character(device)))
 # ---- Configuration ----
 REGION <- "China_Res9"
 SEED <- 42 # single seed for final prediction (not ensemble of 3 runs)
+
+# CAST 环境敏感性分析（可选）：
+#   含义：在固定已训练 CAST 网络权重的前提下，对每个环境变量在标准化空间做
+#   微小扰动（+eps_z），重新构造 DAG 交互特征并前向传播，得到 HSS 变化幅度。
+#   用于回答「预测对哪个环境因子最敏感、哪些像元最不稳定」，与 fig8 的模型间
+#   离散度（不确定性）互补：此处是「输入扰动敏感性」，不是贝叶斯后验。
+#   设为 TRUE 会增加若干次全网格 predict_nn（每个被扰动的变量各 1 次）。
+RUN_CAST_ENV_SENSITIVITY <- FALSE
+CAST_SENSITIVITY_EPS_Z <- 0.15 # 标准化单位上的扰动（约 0.15 个训练集 SD）
+CAST_SENSITIVITY_MAX_VARS <- 8L # 最多对多少个变量做 OAT（优先 screened cast_vars）
 
 data_dir <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready/species_data_screened"
 env_file <- "E:/CausalSDMs/outputs/EcoISEA3H/Res9/CAST_ready/China_EnvData_Res9_Screened.csv"
@@ -266,6 +279,44 @@ predict_nn <- function(model, X_df) {
         pred <- as.numeric(torch_sigmoid(model(xt))$squeeze()$cpu())
     })
     pred
+}
+
+# ==============================================================================
+# CAST: one-at-a-time (OAT) environmental sensitivity on full grid
+# ==============================================================================
+# 固定 CAST 权重，仅扰动标准化后的单个环境变量（+eps_z），重算 ATE 加权与 DAG 交互列后
+# 再前向推理。返回每个像元上 |ΔHSS| 的最大值与取到最大值的变量名（字符，逗号分隔备选）。
+cast_oat_env_sensitivity <- function(model, X_grid_sc, selected_vars, cast_vars,
+                                       strong_env_edges, ate_results, boot_str,
+                                       hss_baseline, vars_to_perturb, eps_z) {
+    n <- nrow(X_grid_sc)
+    delta_mat <- matrix(NA_real_, nrow = n, ncol = length(vars_to_perturb))
+    colnames(delta_mat) <- vars_to_perturb
+    for (j in seq_along(vars_to_perturb)) {
+        v <- vars_to_perturb[j]
+        if (!v %in% names(X_grid_sc)) next
+        Xp <- X_grid_sc
+        Xp[[v]] <- Xp[[v]] + eps_z
+        gi <- build_cast_features(
+            Xp, selected_vars, cast_vars,
+            strong_env_edges, ate_results, boot_str
+        )
+        hss_p <- predict_nn(model, gi$data)
+        delta_mat[, j] <- abs(hss_p - hss_baseline)
+    }
+    dmax <- apply(delta_mat, 1L, function(r) if (all(is.na(r))) NA_real_ else max(r, na.rm = TRUE))
+    jmax <- apply(delta_mat, 1L, function(r) {
+        if (all(is.na(r))) return(NA_integer_)
+        which.max(replace(r, is.na(r), -Inf))
+    })
+    vmax <- rep(NA_character_, n)
+    ok <- !is.na(jmax) & jmax >= 1L & jmax <= length(vars_to_perturb)
+    vmax[ok] <- vars_to_perturb[jmax[ok]]
+    list(
+        d_hss_max = dmax,
+        argmax_var = vmax,
+        delta_matrix = delta_mat
+    )
 }
 
 # ==============================================================================
@@ -546,6 +597,28 @@ for (sp_idx in seq_along(sp_files)) {
             )
             pred_out$HSS_CAST <- predict_nn(res$model, cast_grid_info$data)
             cat(sprintf(" val_AUC=%.4f ✓\n", res$best_val_auc))
+
+            if (isTRUE(RUN_CAST_ENV_SENSITIVITY)) {
+                vars_sens <- cast_vars
+                if (length(vars_sens) > CAST_SENSITIVITY_MAX_VARS) {
+                    vars_sens <- vars_sens[seq_len(CAST_SENSITIVITY_MAX_VARS)]
+                }
+                if (length(vars_sens) > 0L) {
+                    cat("    CAST env sensitivity (OAT, fixed weights)...")
+                    sens <- cast_oat_env_sensitivity(
+                        res$model, X_grid_sc, selected_vars, cast_vars,
+                        strong_env_edges, ate_results, boot_str,
+                        pred_out$HSS_CAST, vars_sens, CAST_SENSITIVITY_EPS_Z
+                    )
+                    pred_out$SENS_CAST_dHSS_max <- sens$d_hss_max
+                    pred_out$SENS_CAST_argmax_var <- sens$argmax_var
+                    cat(sprintf(
+                        " median max|ΔHSS|=%.4f (%d vars, +eps_z=%.2f) ✓\n",
+                        stats::median(sens$d_hss_max, na.rm = TRUE),
+                        length(vars_sens), CAST_SENSITIVITY_EPS_Z
+                    ))
+                }
+            }
         },
         error = function(e) {
             pred_out$HSS_CAST <<- NA_real_
