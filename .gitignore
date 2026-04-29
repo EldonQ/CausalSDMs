@@ -114,5 +114,8 @@ DASCO_AlienCoordinates_SInAS_2.4.1.csv
 
 
 data/
-
+*.csv
 refPackage/
+RiverATLAS_Data_v10_shp/
+
+Lota_lota_distribution.png

@@ -8,16 +8,19 @@ Fig 6: 空间 CATE 热力图 — 批量生成，单图单文件
   - scipy.interpolate.griddata 高分辨率插值 → 类 TIF 精度
   - pcolormesh 栅格渲染 (像素级平滑)
   - 中国省界 (china.shp) + 南海断续线 (dashline.shp)
-  - 南海小地图 inset
+  - 可选：南海小地图 inset（SHOW_SCS_INSET，默认关闭）
   - 海岸线 / 河流 / 湖泊
   - 经纬网格 + 坐标标注
+  - CATE 最终显示范围：中国省界 mask + 各 SDM 的 HSS 适宜区（CAST/BRT/Maxent/RF 分别出图）
 
 可配置参数 (脚本头部修改):
   TARGET_SPECIES : 指定物种 (None = 全部)
   TARGET_VARS    : 指定变量 (None = 全部已有 CATE 变量)
   INTERP_RES     : 插值分辨率 (度, 越小越精细)
+  USE_HSS_MASK   : 是否按 HSS 阈值截断（需 spatial_predictions/pred_*.csv）
+  HSS_CONF_THRESHOLD : HSS 生境置信下限（格点 HSS < 该值则不绘制 CATE）
 
-输出: figures/case2_eco/plot/cate_maps/fig6_cate_{species}_{variable}.png/svg
+输出: figures/case2_eco/plot/cate_maps/fig6_cate_{species}_{variable}_maskHSS_{CAST|BRT|Maxent|RF}.png/svg
 
 依赖: pip install cartopy geopandas scipy matplotlib numpy pandas xarray
 
@@ -56,16 +59,25 @@ warnings.filterwarnings("ignore")
 
 TARGET_SPECIES = ["Rhinopithecus_roxellana", "Ovis_ammon", "Macaca_mulatta"]   # 例: ["Alces_alces"] 或 ["Ovis_ammon", "Capra_sibirica"]
 TARGET_VARS    = None          # None = 全部已有 CATE 变量; 或 ["elevation", "bio19"]
-INTERP_RES     = 0.06       # 格点密度：越小点越多；0.06 约 6km，热图点更密
+INTERP_RES     = 0.01       # 格点密度：越小点越多；0.06 约 6km，热图点更密
 # scipy.griddata 仅支持三种: "nearest"=最快 | "linear"=折中 | "cubic"=最慢最平滑
-INTERP_METHOD  = "nearest"
+INTERP_METHOD  = "cubic"
 MASK_BUFFER    = 0.0         # 裁剪时边界外扩(度)；不再外扩，通过 nearest 填充彻底消除白边，避免热图移除边界
 DPI            = 1200       # 输出分辨率
+SHOW_SCS_INSET = False      # True=主图右下角绘制南海小地图；False=不绘制
+
+# ★ HSS 生境掩膜（与 fig7/fig8 的 pred_{species}.csv 一致）
+USE_HSS_MASK       = True
+PRED_DIR           = "output/case2_eco/spatial_predictions"
+# 列名 HSS_CAST / HSS_BRT / HSS_Maxent / HSS_RF（Maxent 即 MaxNet 类输出）
+HSS_MODELS         = ["CAST", "BRT", "Maxent", "RF"]
+HSS_CONF_THRESHOLD = 0.1   # 仅在该 HSS 以上绘制 CATE；可按文献或 TSS 最优点调整
+HSS_INTERP_METHOD  = "cubic"  # HSS 栅格化用 linear，避免 nearest 把适宜区外扩到凸包外
 
 # ★ 速度优化
 N_WORKERS      = 8         # 并行进程数，0 或 1=单进程，4/8 等=多进程加速
 FAST_PLOT      = True       # True=低分辨率海岸线、不画河流湖泊，出图更快
-DISPLAY_RES    = 0.02        # 若设为浮点(如 0.02)，绘图用此分辨率降采样，加快 pcolormesh
+DISPLAY_RES    = 0.0        # 若设为浮点(如 0.02)，绘图用此分辨率降采样，加快 pcolormesh
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 路径配置
@@ -75,8 +87,8 @@ os.chdir(BASE_DIR)
 
 CATE_CSV    = "output/case2_eco/all_spatial_cate_v3.csv"
 ATE_CSV     = "output/case2_eco/all_ate_results_v3.csv"
-CHINA_SHP   = "plot-function-main/data/china.shp"      # plotbook 目录下的中国省界
-DASH_SHP    = "plot-function-main/data/dashline.shp"    # 南海断续线
+CHINA_SHP   = "refPackage/plot-function-main/data/china.shp"      # plotbook 目录下的中国省界
+DASH_SHP    = "refPackage/plot-function-main/data/dashline.shp"    # 南海断续线
 FIG_DIR     = "figures/case2_eco/plot/cate_maps"
 TBL_DIR     = "figures/case2_eco/tables"
 
@@ -119,6 +131,21 @@ _china_geom_cache = None  # (buffer_used, geometry)
 # 省界/南海 shapefile 几何缓存，避免每张图重复读盘
 _boundary_cache = {}
 
+def _normalize_china_polygonal(geom):
+    """将省界 union 结果规范为面几何，供 contains_xy 使用（含 GeometryCollection 拆出多边形）。"""
+    if geom is None or getattr(geom, "is_empty", True):
+        return None
+    gt = geom.geom_type
+    if gt in ("Polygon", "MultiPolygon"):
+        return geom
+    if gt == "GeometryCollection":
+        from shapely.ops import unary_union
+        parts = [g for g in geom.geoms if g.geom_type in ("Polygon", "MultiPolygon")]
+        if not parts:
+            return None
+        return unary_union(parts)
+    return geom
+
 def get_china_geometry():
     """
     加载中国省界 shapefile 并合并为单一多边形，用于栅格裁剪。
@@ -138,6 +165,7 @@ def get_china_geometry():
         return None
     union = gdf.unary_union
     geom = union.buffer(effective_buffer, resolution=2) if effective_buffer else union
+    geom = _normalize_china_polygonal(geom)
     _china_geom_cache = (effective_buffer, geom)
     return geom
 
@@ -154,21 +182,30 @@ def get_boundary_geoms(shp_path):
     return _boundary_cache[shp_path]
 
 def _points_inside_china(points_xy, china_geom):
-    """对 (N,2) 的 points_xy 做 point-in-polygon，返回 (N,) bool。"""
-    from shapely.geometry import MultiPolygon
+    """对 (N,2) 的 points_xy 做境内判断；优先 Shapely contains_xy（含孔洞/多部件），失败则回退到外轮廓。"""
     if china_geom is None:
         return np.ones(len(points_xy), dtype=bool)
-    if isinstance(china_geom, MultiPolygon):
-        polys = list(china_geom.geoms)
-    else:
-        polys = [china_geom]
-    inside = np.zeros(len(points_xy), dtype=bool)
-    for poly in polys:
-        if poly.is_empty or poly.exterior is None:
-            continue
-        path = MplPath(np.array(poly.exterior.xy).T)
-        inside |= path.contains_points(points_xy)
-    return inside
+    geom = _normalize_china_polygonal(china_geom)
+    if geom is None:
+        return np.zeros(len(points_xy), dtype=bool)
+    try:
+        from shapely import contains_xy
+        x = np.ascontiguousarray(points_xy[:, 0], dtype=float)
+        y = np.ascontiguousarray(points_xy[:, 1], dtype=float)
+        return np.asarray(contains_xy(geom, x, y), dtype=bool)
+    except Exception:
+        from shapely.geometry import MultiPolygon
+        if isinstance(geom, MultiPolygon):
+            polys = list(geom.geoms)
+        else:
+            polys = [geom]
+        inside = np.zeros(len(points_xy), dtype=bool)
+        for poly in polys:
+            if poly.is_empty or poly.exterior is None:
+                continue
+            path = MplPath(np.array(poly.exterior.xy).T)
+            inside |= path.contains_points(points_xy)
+        return inside
 
 def mask_grid_to_china(grid_lon_1d, grid_lat_1d, grid_values_2d, china_geom):
     """
@@ -217,6 +254,98 @@ def build_china_mask(grid_lon_1d, grid_lat_1d, china_geom):
         return mask
     except Exception:
         return np.ones((nlat, nlon), dtype=bool)
+
+def find_pred_csv(species_name, pred_dir):
+    """定位 spatial_predictions 下的 pred_{species}.csv（兼容空格/下划线命名）。"""
+    if not pred_dir or not os.path.isdir(pred_dir):
+        return None
+    s = (species_name or "").strip()
+    candidates = [
+        os.path.join(pred_dir, f"pred_{s}.csv"),
+        os.path.join(pred_dir, f"pred_{s.replace(' ', '_')}.csv"),
+        os.path.join(pred_dir, f"pred_{s.replace(' ', '')}.csv"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def hss_column_for_model(model):
+    """pred 表中的列名（与 fig7/fig8 一致）；MaxNet 类输出在表里记为 HSS_Maxent。"""
+    key = (model or "").strip()
+    aliases = {
+        "CAST": "HSS_CAST",
+        "BRT": "HSS_BRT",
+        "Maxent": "HSS_Maxent",
+        "MAXENT": "HSS_Maxent",
+        "maxent": "HSS_Maxent",
+        "MaxNet": "HSS_Maxent",
+        "maxnet": "HSS_Maxent",
+        "RF": "HSS_RF",
+    }
+    if key in aliases:
+        return aliases[key]
+    return f"HSS_{key}"
+
+
+def build_hss_suitable_mask_on_grid(pred_df, hss_col, threshold, grid_lon, grid_lat, interp_method):
+    """
+    将 pred 表中的 HSS 插值到与 CATE 相同的规则网格，返回与 china_mask 同形状的 bool：
+    True 表示该格点 HSS 插值有效且 >= threshold（生境置信/适宜区内）。
+    使用 linear/cubic 等时不再用 nearest 回填，避免适宜区沿凸包错误外延。
+    """
+    if pred_df is None or len(pred_df) == 0 or hss_col not in pred_df.columns:
+        return None
+    lon = pd.to_numeric(pred_df.get("lon"), errors="coerce")
+    lat = pd.to_numeric(pred_df.get("lat"), errors="coerce")
+    hss = pd.to_numeric(pred_df[hss_col], errors="coerce")
+    ok = lon.notna() & lat.notna() & hss.notna()
+    lon = lon[ok].to_numpy(dtype=float)
+    lat = lat[ok].to_numpy(dtype=float)
+    hss = hss[ok].to_numpy(dtype=float)
+    if len(hss) < 30:
+        return None
+    grid_lon_2d, grid_lat_2d = np.meshgrid(grid_lon, grid_lat)
+    points = np.column_stack([lon, lat])
+    try:
+        g = griddata(points, hss, (grid_lon_2d, grid_lat_2d), method=interp_method)
+    except Exception:
+        g = griddata(points, hss, (grid_lon_2d, grid_lat_2d), method="linear")
+    suitable = np.isfinite(g) & (g >= float(threshold))
+    return suitable
+
+
+def precompute_hss_plot_masks(species_names, grid_lon, grid_lat, china_mask, pred_dir, models, threshold, interp_method):
+    """
+    返回 dict[(species, model)] = 与 china_mask 同形状的 bool（中国 ∧ HSS 适宜区）。
+    """
+    masks = {}
+    for sp in species_names:
+        path = find_pred_csv(sp, pred_dir)
+        if path is None:
+            print(f"  [HSS] 未找到预测文件: pred_{sp}.csv （已查 PRED_DIR={pred_dir}）")
+            continue
+        try:
+            pdf = pd.read_csv(path)
+        except Exception as e:
+            print(f"  [HSS] 读取失败 {path}: {e}")
+            continue
+        for model in models:
+            col = hss_column_for_model(model)
+            if col not in pdf.columns:
+                alt = [c for c in pdf.columns if str(c).upper().startswith("HSS_")]
+                print(f"  [HSS] {sp} 无列 {col}，可用 HSS 列: {alt[:8]}{'...' if len(alt) > 8 else ''}")
+                continue
+            sm = build_hss_suitable_mask_on_grid(pdf, col, threshold, grid_lon, grid_lat, interp_method)
+            if sm is None:
+                continue
+            if sm.shape != china_mask.shape:
+                print(f"  [HSS] {sp} {model} 掩膜形状 {sm.shape} 与网格 {china_mask.shape} 不一致，跳过。")
+                continue
+            masks[(sp, model)] = china_mask & sm.astype(bool)
+    return masks
+
 
 def add_china_boundary(ax, shp_path, **kwargs):
     """叠加中国省界 shapefile（未缓存时读盘）"""
@@ -333,10 +462,13 @@ def add_scs_inset(fig, ax_main, data_lons, data_lats, data_vals, levels, cmap, n
 # ══════════════════════════════════════════════════════════════════════════════
 def render_cate_map(lons, lats, cate_vals, species_name, var_name, ate_coef,
                     grid_lon=None, grid_lat=None, china_mask=None,
-                    geoms_china=None, geoms_dash=None, display_res=None):
+                    geoms_china=None, geoms_dash=None, display_res=None,
+                    plot_hss_model=None, plot_hss_threshold=None):
     """
     单张 CATE 热力图。可选传入预计算的 grid_lon, grid_lat, china_mask 与边界几何以加速。
+    china_mask: 最终为 True 的格点才保留 CATE（通常 = 中国 ∧ HSS 适宜区）。
     display_res: 若设置，绘图时降采样到此分辨率以加快 pcolormesh。
+    plot_hss_model / plot_hss_threshold: 仅在副标题标注当前 HSS 掩膜来源与阈值。
     """
     lon_min, lon_max = CHINA_EXTENT[0], CHINA_EXTENT[1]
     lat_min, lat_max = CHINA_EXTENT[2], CHINA_EXTENT[3]
@@ -429,6 +561,8 @@ def render_cate_map(lons, lats, cate_vals, species_name, var_name, ate_coef,
     subtitle = (f"{sp_display}  |  ATE = {ate_coef:.4f}  |  "
                 f"n = {len(lons):,} grid cells  |  "
                 f"Interp. {INTERP_RES}°")
+    if plot_hss_model is not None and plot_hss_threshold is not None:
+        subtitle += f"  |  Mask: HSS-{plot_hss_model} ≥ {plot_hss_threshold:g}"
     # 副标题置于主标题上方，留出间距避免与主标题重叠
     ax.text(
         0.5, 1.03, subtitle,
@@ -439,10 +573,11 @@ def render_cate_map(lons, lats, cate_vals, species_name, var_name, ate_coef,
 
     # 先收紧边距，再按最终主图位置放置小地图，避免小地图错位；top 留足给标题
     plt.subplots_adjust(left=0.04, right=0.96, top=0.90, bottom=0.14)
-    fig.canvas.draw()
-    # 南海小地图：必须在 subplots_adjust 之后添加，位置才贴合主图右下角
-    add_scs_inset(fig, ax, plot_lon, plot_lat, plot_cate, None, cmap, norm,
-                  geoms_china=geoms_china, geoms_dash=geoms_dash)
+    if SHOW_SCS_INSET:
+        fig.canvas.draw()
+        # 南海小地图：必须在 subplots_adjust 之后添加，位置才贴合主图右下角
+        add_scs_inset(fig, ax, plot_lon, plot_lat, plot_cate, None, cmap, norm,
+                      geoms_china=geoms_china, geoms_dash=geoms_dash)
     return fig
 
 
@@ -481,7 +616,10 @@ def main():
     combos = combos.sort_values(["species", "variable"]).reset_index(drop=True)
 
     n_tasks = len(combos)
-    print(f"  待绘制: {n_tasks} 张 CATE 热力图\n")
+    if USE_HSS_MASK:
+        print(f"  待绘制: {n_tasks} 组 (物种×变量)；每组按 HSS 模型各出一张（{HSS_MODELS}）\n")
+    else:
+        print(f"  待绘制: {n_tasks} 张 CATE 热力图（仅国界 mask）\n")
 
     # 保存任务清单
     combos.to_csv(os.path.join(TBL_DIR, "fig6_cate_plot_tasks.csv"), index=False)
@@ -493,13 +631,41 @@ def main():
     grid_lon = np.arange(lon_min, lon_max + INTERP_RES * 0.5, INTERP_RES)
     grid_lat = np.arange(lat_min, lat_max + INTERP_RES * 0.5, INTERP_RES)
     china_geom = get_china_geometry()
+    if china_geom is None:
+        print("  ⚠ 未加载中国省界几何 (CHINA_SHP)，无法按国界裁剪；请检查路径。")
     china_mask = build_china_mask(grid_lon, grid_lat, china_geom)
     geoms_china = get_boundary_geoms(CHINA_SHP)
     geoms_dash = get_boundary_geoms(DASH_SHP)
-    print(f"  网格: {len(grid_lon)} x {len(grid_lat)}, 境内像元: {np.sum(china_mask):,}\n")
+    print(f"  网格: {len(grid_lon)} x {len(grid_lat)}, 境内像元: {np.sum(china_mask):,}")
+
+    hss_plot_masks = {}
+    if USE_HSS_MASK:
+        pred_dir = PRED_DIR if os.path.isabs(PRED_DIR) else os.path.join(BASE_DIR, PRED_DIR)
+        sp_unique = combos["species"].drop_duplicates().tolist()
+        hss_plot_masks = precompute_hss_plot_masks(
+            sp_unique, grid_lon, grid_lat, china_mask, pred_dir,
+            HSS_MODELS, HSS_CONF_THRESHOLD, HSS_INTERP_METHOD,
+        )
+        print(f"  [HSS] 已构建 (物种, 模型) 掩膜: {len(hss_plot_masks)} 个，阈值 ≥ {HSS_CONF_THRESHOLD}\n")
+    else:
+        print()
 
     fig_dir_abs = os.path.abspath(FIG_DIR)
     n_workers = max(0, int(N_WORKERS))
+
+    def _save_cate_figure(fig, fname_base):
+        fig.savefig(
+            os.path.join(FIG_DIR, f"{fname_base}.png"),
+            dpi=DPI, bbox_inches="tight", pad_inches=0.02, transparent=True,
+        )
+        try:
+            fig.savefig(
+                os.path.join(FIG_DIR, f"{fname_base}.svg"),
+                bbox_inches="tight", pad_inches=0.02, transparent=True,
+            )
+        except Exception:
+            pass
+        plt.close(fig)
 
     # ── 批量绘制（单进程或多进程）────────────────────────────────────────────
     success = 0
@@ -514,35 +680,54 @@ def main():
             if len(sub) < 30:
                 print(f"  ⚠ 数据不足 ({len(sub)} 点), 跳过")
                 continue
-            try:
-                fig = render_cate_map(
-                    sub["lon"].values, sub["lat"].values, sub["cate"].values,
-                    sp, var, ate,
-                    grid_lon=grid_lon, grid_lat=grid_lat, china_mask=china_mask,
-                    geoms_china=geoms_china, geoms_dash=geoms_dash,
-                    display_res=DISPLAY_RES,
-                )
-                if fig is None:
-                    print("  ⚠ 插值后无有效数据, 跳过")
-                    continue
-                fname = f"fig6_cate_{sp}_{var}"
-                fig.savefig(
-                    os.path.join(FIG_DIR, f"{fname}.png"),
-                    dpi=DPI, bbox_inches="tight", pad_inches=0.02, transparent=True,
-                )
+            if USE_HSS_MASK:
+                for model in HSS_MODELS:
+                    key = (sp, model)
+                    if key not in hss_plot_masks:
+                        print(f"  ⚠ 无 HSS 掩膜 ({sp}, {model})，跳过该模型")
+                        continue
+                    plot_mask = hss_plot_masks[key]
+                    if not np.any(plot_mask):
+                        print(f"  ⚠ HSS 掩膜全空 ({sp}, {model})，跳过")
+                        continue
+                    try:
+                        fig = render_cate_map(
+                            sub["lon"].values, sub["lat"].values, sub["cate"].values,
+                            sp, var, ate,
+                            grid_lon=grid_lon, grid_lat=grid_lat, china_mask=plot_mask,
+                            geoms_china=geoms_china, geoms_dash=geoms_dash,
+                            display_res=DISPLAY_RES,
+                            plot_hss_model=model, plot_hss_threshold=HSS_CONF_THRESHOLD,
+                        )
+                        if fig is None:
+                            print(f"  ⚠ [{model}] 插值后无有效数据, 跳过")
+                            continue
+                        fname = f"fig6_cate_{sp}_{var}_maskHSS_{model}"
+                        _save_cate_figure(fig, fname)
+                        success += 1
+                        print(f"  ✓ 已保存 [{model}] → {fname}.png")
+                    except Exception as e:
+                        print(f"  ✗ [{model}] 错误: {e}")
+                        plt.close("all")
+            else:
                 try:
-                    fig.savefig(
-                        os.path.join(FIG_DIR, f"{fname}.svg"),
-                        bbox_inches="tight", pad_inches=0.02, transparent=True,
+                    fig = render_cate_map(
+                        sub["lon"].values, sub["lat"].values, sub["cate"].values,
+                        sp, var, ate,
+                        grid_lon=grid_lon, grid_lat=grid_lat, china_mask=china_mask,
+                        geoms_china=geoms_china, geoms_dash=geoms_dash,
+                        display_res=DISPLAY_RES,
                     )
-                except Exception:
-                    pass
-                plt.close(fig)
-                success += 1
-                print(f"  ✓ 已保存")
-            except Exception as e:
-                print(f"  ✗ 错误: {e}")
-                plt.close("all")
+                    if fig is None:
+                        print("  ⚠ 插值后无有效数据, 跳过")
+                        continue
+                    fname = f"fig6_cate_{sp}_{var}"
+                    _save_cate_figure(fig, fname)
+                    success += 1
+                    print(f"  ✓ 已保存")
+                except Exception as e:
+                    print(f"  ✗ 错误: {e}")
+                    plt.close("all")
     else:
         from concurrent.futures import ProcessPoolExecutor, as_completed
         task_args = []
@@ -552,47 +737,67 @@ def main():
             sub = cate_all.loc[mask].dropna(subset=["lon", "lat", "cate"])
             if len(sub) < 30:
                 continue
-            task_args.append((
-                sp, var, ate,
-                sub["lon"].values.copy(), sub["lat"].values.copy(), sub["cate"].values.copy(),
-                grid_lon, grid_lat, china_mask,
-                geoms_china, geoms_dash,
-                fig_dir_abs, DPI,
-            ))
+            if USE_HSS_MASK:
+                for model in HSS_MODELS:
+                    key = (sp, model)
+                    if key not in hss_plot_masks:
+                        continue
+                    plot_mask = hss_plot_masks[key]
+                    if not np.any(plot_mask):
+                        continue
+                    task_args.append((
+                        sp, var, ate,
+                        sub["lon"].values.copy(), sub["lat"].values.copy(), sub["cate"].values.copy(),
+                        grid_lon, grid_lat, np.asarray(plot_mask, dtype=bool),
+                        geoms_china, geoms_dash,
+                        fig_dir_abs, DPI, model, float(HSS_CONF_THRESHOLD),
+                    ))
+            else:
+                task_args.append((
+                    sp, var, ate,
+                    sub["lon"].values.copy(), sub["lat"].values.copy(), sub["cate"].values.copy(),
+                    grid_lon, grid_lat, np.asarray(china_mask, dtype=bool),
+                    geoms_china, geoms_dash,
+                    fig_dir_abs, DPI, None, None,
+                ))
         print(f"  使用 {n_workers} 个进程并行渲染 {len(task_args)} 张图...\n")
         with ProcessPoolExecutor(max_workers=n_workers) as executor:
             futures = {executor.submit(_render_one_task, a): a for a in task_args}
             for i, future in enumerate(as_completed(futures)):
-                ok, sp, var, err = future.result()
+                ok, sp, var, model_tag, err = future.result()
                 if ok:
                     success += 1
-                    print(f"  ✓ [{i+1}/{len(task_args)}] {sp} x {var}")
+                    tag = f" maskHSS_{model_tag}" if model_tag else ""
+                    print(f"  ✓ [{i+1}/{len(task_args)}] {sp} x {var}{tag}")
                 else:
                     print(f"  ✗ [{i+1}/{len(task_args)}] {sp} x {var}  {err or ''}")
 
     print(f"\n{'=' * 60}")
-    print(f"  完成: {success}/{n_tasks} 张 CATE 热力图已保存至 {FIG_DIR}")
+    print(f"  完成: {success} 张 CATE 热力图已保存至 {FIG_DIR}")
     print(f"{'=' * 60}")
 
 
 def _render_one_task(args):
     """
     单张图渲染任务，供多进程调用。args: (sp, var, ate, lons, lats, cate_vals,
-    grid_lon, grid_lat, china_mask, geoms_china, geoms_dash, fig_dir, dpi).
-    返回 (success, sp, var, err_msg or None)。
+    grid_lon, grid_lat, plot_mask, geoms_china, geoms_dash, fig_dir, dpi,
+    hss_model, hss_thr)。
+    返回 (success, sp, var, hss_model or None, err_msg or None)。
     """
-    (sp, var, ate, lons, lats, cate_vals, grid_lon, grid_lat, china_mask,
-     geoms_china, geoms_dash, fig_dir, dpi) = args
+    (sp, var, ate, lons, lats, cate_vals, grid_lon, grid_lat, plot_mask,
+     geoms_china, geoms_dash, fig_dir, dpi, hss_model, hss_thr) = args
     try:
         fig = render_cate_map(
             lons, lats, cate_vals, sp, var, ate,
-            grid_lon=grid_lon, grid_lat=grid_lat, china_mask=china_mask,
+            grid_lon=grid_lon, grid_lat=grid_lat, china_mask=plot_mask,
             geoms_china=geoms_china, geoms_dash=geoms_dash,
             display_res=DISPLAY_RES,
+            plot_hss_model=hss_model, plot_hss_threshold=hss_thr,
         )
         if fig is None:
-            return (False, sp, var, "无有效数据")
-        fname = f"fig6_cate_{sp}_{var}"
+            return (False, sp, var, hss_model, "无有效数据")
+        fname = (f"fig6_cate_{sp}_{var}_maskHSS_{hss_model}"
+                 if hss_model else f"fig6_cate_{sp}_{var}")
         fig.savefig(
             os.path.join(fig_dir, f"{fname}.png"),
             dpi=dpi, bbox_inches="tight", pad_inches=0.02, transparent=True,
@@ -605,10 +810,10 @@ def _render_one_task(args):
         except Exception:
             pass
         plt.close(fig)
-        return (True, sp, var, None)
+        return (True, sp, var, hss_model, None)
     except Exception as e:
         plt.close("all")
-        return (False, sp, var, str(e))
+        return (False, sp, var, hss_model, str(e))
 
 
 if __name__ == "__main__":
